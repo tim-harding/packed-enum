@@ -2,6 +2,7 @@
 
 use packed_enum::Packed;
 
+#[allow(unused)]
 #[derive(Packed)]
 enum Test {
     Things,
