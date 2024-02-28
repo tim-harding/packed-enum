@@ -1,14 +1,13 @@
-pub fn add(left: usize, right: usize) -> usize {
-    left + right
+#![cfg(test)]
+
+use packed_enum::Packed;
+
+#[derive(Packed)]
+enum Test {
+    Things,
+    Stuff(u8),
+    Foo { bar: u16, baz: u32 },
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
-}
+#[test]
+fn stuff() {}

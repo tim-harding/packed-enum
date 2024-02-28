@@ -3,7 +3,9 @@ name = "packed-enum"
 version = "0.1.0"
 edition = "2021"
 
-[dependencies]
+[dependencies.packed-enum-derive]
+version = "0.1.0"
+path = "packed-enum-derive"
 
 [workspace]
 members = ["packed-enum-derive", "packed-enum-testing"]
