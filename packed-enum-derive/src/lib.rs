@@ -30,7 +30,6 @@ fn packed_inner(input: DeriveInput) -> Result<TokenStream2, PackedError> {
     let ident_snake = to_snake_ident(&ident);
     let strukts_mod = format_ident!("{ident_snake}_variants");
     let enum_vec = format_ident!("{ident}Packed");
-    let discriminants = format_ident!("{ident}Discriminants");
 
     match data {
         Data::Enum(e) => {
@@ -117,18 +116,17 @@ fn packed_inner(input: DeriveInput) -> Result<TokenStream2, PackedError> {
             Ok(quote! {
                 #[automatically_derived]
                 mod #strukts_mod {
-                    #(pub struct #strukt_definitions)*
-                }
+                    pub enum Discriminants {
+                        #( #ident_variant, )*
+                    }
 
-                #vis enum #discriminants {
-                    #( #ident_variant, )*
+                    #(pub struct #strukt_definitions)*
                 }
 
                 #[automatically_derived]
                 #[derive(Default)]
                 #vis struct #enum_vec {
-                    // Field index, index within field
-                    indices: Vec<(#discriminants, usize)>,
+                    indices: Vec<(#strukts_mod::Discriminants, usize)>,
                     #(
                         #ident_variant_snake: Vec<#strukts_mod::#ident_variant>,
                     )*
@@ -147,7 +145,7 @@ fn packed_inner(input: DeriveInput) -> Result<TokenStream2, PackedError> {
                                     let strukt = #strukts_mod::#ident_variant #shapes;
                                     let index = self.#ident_variant_snake.len();
                                     self.#ident_variant_snake.push(strukt);
-                                    self.indices.push((#discriminants::#ident_variant, index));
+                                    self.indices.push((#strukts_mod::Discriminants::#ident_variant, index));
                                 }
                             )*
                         }
@@ -157,7 +155,7 @@ fn packed_inner(input: DeriveInput) -> Result<TokenStream2, PackedError> {
                         let (field_index, _) = self.indices.pop()?;
                         match field_index {
                             #(
-                                #discriminants::#ident_variant => {
+                                #strukts_mod::Discriminants::#ident_variant => {
                                     let #strukts_mod::#ident_variant #shapes =
                                         self.#ident_variant_snake.pop()?;
                                     Some(#ident::#ident_variant #shapes)
