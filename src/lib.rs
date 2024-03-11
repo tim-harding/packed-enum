@@ -2,6 +2,8 @@ pub use packed_enum_derive::EnumInfo;
 
 pub trait EnumInfo {
     const VARIANTS: &'static [&'static [VariantField]];
+
+    fn variant_index(&self) -> usize;
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]

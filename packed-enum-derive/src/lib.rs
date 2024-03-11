@@ -30,6 +30,19 @@ fn packed_inner(input: DeriveInput) -> Result<TokenStream2, PackedError> {
 
     match data {
         Data::Enum(e) => {
+            let variant_idents = e.variants.iter().map(|variant| &variant.ident);
+            let variant_kinds =
+                e.variants
+                    .iter()
+                    .map(|variant| match variant.fields.iter().next() {
+                        Some(field) => match field.ident {
+                            Some(_) => VariantKind::Struct,
+                            None => VariantKind::Tuple,
+                        },
+                        None => VariantKind::Empty,
+                    });
+            let variant_indices = e.variants.iter().enumerate().map(|(i, _)| i);
+
             let variants = e.variants.iter().map(|variant| {
                 let Variant {
                     ident: variant_ident,
@@ -72,6 +85,14 @@ fn packed_inner(input: DeriveInput) -> Result<TokenStream2, PackedError> {
                     const VARIANTS: &'static [&'static [::packed_enum::VariantField]] = &[
                         #(#variants),*
                     ];
+
+                    fn variant_index(&self) -> usize {
+                        match self {
+                            #(
+                            #ident::#variant_idents #variant_kinds => #variant_indices,
+                            )*
+                        }
+                    }
                 }
             };
 
@@ -79,6 +100,22 @@ fn packed_inner(input: DeriveInput) -> Result<TokenStream2, PackedError> {
         }
 
         Data::Struct(_) | Data::Union(_) => Err(PackedError::NotAnEnum),
+    }
+}
+
+enum VariantKind {
+    Empty,
+    Tuple,
+    Struct,
+}
+
+impl ToTokens for VariantKind {
+    fn to_tokens(&self, tokens: &mut TokenStream2) {
+        match self {
+            VariantKind::Empty => {}
+            VariantKind::Tuple => quote! { (_) }.to_tokens(tokens),
+            VariantKind::Struct => quote! { { .. } }.to_tokens(tokens),
+        }
     }
 }
 
