@@ -1,23 +1,13 @@
+#![feature(offset_of_nested)]
+#![feature(offset_of_enum)]
 #![cfg(test)]
 #![allow(unused)]
 
-use packed_enum::Packed;
+use packed_enum::EnumInfo;
 
-#[derive(Packed, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
+#[derive(EnumInfo)]
 enum Test {
-    Things,
-    Stuff(u8),
-    Foo { bar: u16, baz: u32 },
-}
-
-#[test]
-fn stuff() {
-    let mut v = TestPacked::new();
-    v.push(Test::Things);
-    v.push(Test::Stuff(10));
-    v.push(Test::Foo { bar: 20, baz: 30 });
-    assert_eq!(v.pop(), Some(Test::Foo { bar: 20, baz: 30 }));
-    assert_eq!(v.pop(), Some(Test::Stuff(10)));
-    assert_eq!(v.pop(), Some(Test::Things));
-    assert_eq!(v.pop(), None);
+    Things { hello: u16, world: u8, stuff: u64 },
+    Stuff { what: u8, ever: u16 },
+    This(u64),
 }

@@ -1,9 +1,9 @@
 use proc_macro::TokenStream;
 use proc_macro2::{Ident, TokenStream as TokenStream2};
-use quote::{format_ident, quote, quote_spanned};
-use syn::{parse_macro_input, Data, DeriveInput, Field, Fields, Variant};
+use quote::{quote, quote_spanned, ToTokens};
+use syn::{parse_macro_input, Data, DeriveInput, Field, Index, Variant};
 
-#[proc_macro_derive(Packed)]
+#[proc_macro_derive(EnumInfo)]
 pub fn packed(input: TokenStream) -> TokenStream {
     let input: DeriveInput = parse_macro_input!(input);
     let span = input.ident.span();
@@ -22,174 +22,78 @@ pub fn packed(input: TokenStream) -> TokenStream {
 fn packed_inner(input: DeriveInput) -> Result<TokenStream2, PackedError> {
     let DeriveInput {
         data,
-        vis,
         ident,
+        vis: _,
         generics: _,
         attrs: _,
     } = input;
-    let ident_snake = to_snake_ident(&ident);
-    let strukts_mod = format_ident!("{ident_snake}_variants");
-    let enum_vec = format_ident!("{ident}Packed");
 
     match data {
         Data::Enum(e) => {
-            let (fields, ident_variant): (Vec<_>, Vec<_>) = e
-                .variants
-                .into_iter()
-                .map(|variant| {
-                    let Variant {
-                        ident,
-                        fields,
-                        discriminant: _,
+            let variants = e.variants.iter().map(|variant| {
+                let Variant {
+                    ident: variant_ident,
+                    fields: variant_fields,
+                    attrs: _,
+                    discriminant: _,
+                } = variant;
+
+                let fields_info = variant_fields.iter().enumerate().map(|(i, field)| {
+                    let Field {
+                        ident: field_ident,
+                        ty,
                         attrs: _,
-                    } = variant;
-                    (fields, ident)
-                })
-                .unzip();
+                        vis: _,
+                        mutability: _,
+                        colon_token: _,
+                    } = field;
 
-            let ident_variant_snake: Vec<_> = ident_variant
-                .iter()
-                .map(|ident| to_snake_ident(&ident))
-                .collect();
+                    let field_ident = match field_ident {
+                        Some(field_ident) => IdentOrIndex::Ident(field_ident),
+                        None => IdentOrIndex::Index(Index::from(i)),
+                    };
 
-            let strukt_definitions: Vec<_> = fields
-                .iter()
-                .zip(&ident_variant)
-                .map(|(fields, ident_variant)| match fields {
-                    Fields::Named(fields) => {
-                        let definition = fields.named.iter().map(|field| {
-                            let Field { ident, ty, .. } = field;
-                            quote! {
-                                pub #ident: #ty,
-                            }
-                        });
-                        quote! {
-                            #ident_variant {
-                                #(#definition)*
-                            }
+                    quote! {
+                        ::packed_enum::VariantField {
+                            offset: ::std::mem::offset_of!(#ident, #variant_ident.#field_ident),
+                            size: ::std::mem::size_of::<#ty>(),
+                            align: ::std::mem::align_of::<#ty>(),
                         }
                     }
+                });
 
-                    Fields::Unnamed(fields) => {
-                        let definition = fields.unnamed.iter().map(|field| {
-                            let Field { ty, .. } = field;
-                            quote! {
-                                pub #ty
-                            }
-                        });
-                        quote! {
-                            #ident_variant ( #(#definition),* );
-                        }
-                    }
-
-                    Fields::Unit => quote! { #ident_variant; },
-                })
-                .collect();
-
-            let shapes: Vec<_> = fields
-                .iter()
-                .map(|fields| match fields {
-                    Fields::Named(fields) => {
-                        let field_idents = fields.named.iter().map(|field| &field.ident);
-                        quote! {
-                            {
-                                #(#field_idents,)*
-                            }
-                        }
-                    }
-
-                    Fields::Unnamed(fields) => {
-                        let field_idents = fields
-                            .unnamed
-                            .iter()
-                            .enumerate()
-                            .map(|(index, _)| format_ident!("f_{}", index));
-                        quote! {
-                            ( #(#field_idents),* )
-                        }
-                    }
-
-                    Fields::Unit => quote! {},
-                })
-                .collect();
-
-            Ok(quote! {
-                #[automatically_derived]
-                mod #strukts_mod {
-                    pub enum Discriminants {
-                        #( #ident_variant, )*
-                    }
-
-                    #(pub struct #strukt_definitions)*
+                quote! {
+                    &[#(#fields_info),*]
                 }
+            });
 
-                #[automatically_derived]
-                #[derive(Default)]
-                #vis struct #enum_vec {
-                    indices: Vec<(#strukts_mod::Discriminants, usize)>,
-                    #(
-                        #ident_variant_snake: Vec<#strukts_mod::#ident_variant>,
-                    )*
+            let out = quote! {
+                impl ::packed_enum::EnumInfo for #ident {
+                    const VARIANTS: &'static [&'static [::packed_enum::VariantField]] = &[
+                        #(#variants),*
+                    ];
                 }
+            };
 
-                #[automatically_derived]
-                impl #enum_vec {
-                    pub fn new() -> Self {
-                        Self::default()
-                    }
-
-                    pub fn push(&mut self, element: #ident) {
-                        match element {
-                            #(
-                                #ident::#ident_variant #shapes => {
-                                    let strukt = #strukts_mod::#ident_variant #shapes;
-                                    let index = self.#ident_variant_snake.len();
-                                    self.#ident_variant_snake.push(strukt);
-                                    self.indices.push((#strukts_mod::Discriminants::#ident_variant, index));
-                                }
-                            )*
-                        }
-                    }
-
-                    pub fn pop(&mut self) -> Option<#ident> {
-                        let (field_index, _) = self.indices.pop()?;
-                        match field_index {
-                            #(
-                                #strukts_mod::Discriminants::#ident_variant => {
-                                    let #strukts_mod::#ident_variant #shapes =
-                                        self.#ident_variant_snake.pop()?;
-                                    Some(#ident::#ident_variant #shapes)
-                                }
-                            )*
-                        }
-                    }
-                }
-            })
+            Ok(out)
         }
 
         Data::Struct(_) | Data::Union(_) => Err(PackedError::NotAnEnum),
     }
 }
 
-fn to_snake_ident(ident: &Ident) -> Ident {
-    Ident::new(&to_snake_case(&ident.to_string()), ident.span())
+enum IdentOrIndex<'a> {
+    Ident(&'a Ident),
+    Index(Index),
 }
 
-fn to_snake_case(s: &str) -> String {
-    let mut chars = s.chars();
-    let mut out = String::new();
-    if let Some(c) = chars.next() {
-        out.extend(c.to_lowercase());
-    }
-    while let Some(c) = chars.next() {
-        if c.is_uppercase() {
-            out.push('_');
-            out.extend(c.to_lowercase());
-        } else {
-            out.push(c);
+impl<'a> ToTokens for IdentOrIndex<'a> {
+    fn to_tokens(&self, tokens: &mut TokenStream2) {
+        match self {
+            IdentOrIndex::Ident(ident) => ident.to_tokens(tokens),
+            IdentOrIndex::Index(i) => i.to_tokens(tokens),
         }
     }
-    out
 }
 
 #[derive(Debug, Clone)]
