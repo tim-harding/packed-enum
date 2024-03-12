@@ -25,5 +25,6 @@ mod tests {
     fn sizes_count() {
         assert_eq!(Test::SIZES_COUNT, 2);
         assert_eq!(Packed::<Test>::SIZES, [4, 8]);
+        assert_eq!(Packed::<Test>::BUCKET, [0, 0, 0, 1, 1, 1, 1]);
     }
 }
