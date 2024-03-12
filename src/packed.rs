@@ -41,7 +41,7 @@ where
         out
     };
 
-    pub const BOUNDS: [(usize, usize); T::VARIANT_COUNT] = {
+    pub const COPY_BOUNDS: [(usize, usize); T::VARIANT_COUNT] = {
         let mut out = [(0, 0); T::VARIANT_COUNT];
         let variants = T::VARIANTS;
 

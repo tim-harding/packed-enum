@@ -48,6 +48,7 @@ pub struct VariantField {
 const fn variant_size(fields: &[VariantField]) -> usize {
     let mut min = usize::MAX;
     let mut max = 0;
+    let mut max_align = 0;
 
     let mut i = 0;
     while i < fields.len() {
@@ -59,11 +60,23 @@ const fn variant_size(fields: &[VariantField]) -> usize {
         let hi = field.offset + field.size;
         max = if max > hi { max } else { hi };
 
+        max_align = if max_align > field.align {
+            max_align
+        } else {
+            field.align
+        };
+
         i += 1;
     }
 
-    match max.checked_sub(min) {
+    let size = match max.checked_sub(min) {
         Some(size) => size,
         None => 0,
-    }
+    };
+
+    // Taken from Layout::padding_needed_for
+    let size_rounded_up = size.wrapping_add(max_align).wrapping_sub(1) & !max_align.wrapping_sub(1);
+    let padding = size_rounded_up.wrapping_sub(size);
+
+    size + padding
 }

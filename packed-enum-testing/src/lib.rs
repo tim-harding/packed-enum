@@ -13,18 +13,20 @@ enum Test {
     E(u16, u16, u16, u16),
     F(u32, u32),
     G(u64),
+
+    I(u8, u16, u32),
+    J(u16, u32),
+
     H,
 }
 
 #[cfg(test)]
 mod tests {
-    use packed_enum::Packed;
-
     use super::*;
+    use packed_enum::Packed;
 
     #[test]
     fn sizes_count() {
-        assert_eq!(Test::SIZES_COUNT, 2);
         assert_eq!(Packed::<Test>::SIZES, [4, 8]);
         assert_eq!(
             Packed::<Test>::BUCKET,
@@ -36,11 +38,13 @@ mod tests {
                 Some(1),
                 Some(1),
                 Some(1),
+                Some(1),
+                Some(1),
                 None,
             ]
         );
         assert_eq!(
-            Packed::<Test>::BOUNDS,
+            Packed::<Test>::COPY_BOUNDS,
             [
                 (1, 5),
                 (2, 6),
@@ -49,6 +53,8 @@ mod tests {
                 (2, 10),
                 (4, 12),
                 (8, 16),
+                (1, 8),
+                (2, 8),
                 (0, 0),
             ]
         );
