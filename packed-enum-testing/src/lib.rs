@@ -13,6 +13,7 @@ enum Test {
     E(u16, u16, u16, u16),
     F(u32, u32),
     G(u64),
+    H,
 }
 
 #[cfg(test)]
@@ -25,6 +26,18 @@ mod tests {
     fn sizes_count() {
         assert_eq!(Test::SIZES_COUNT, 2);
         assert_eq!(Packed::<Test>::SIZES, [4, 8]);
-        assert_eq!(Packed::<Test>::BUCKET, [0, 0, 0, 1, 1, 1, 1]);
+        assert_eq!(
+            Packed::<Test>::BUCKET,
+            [
+                Some(0),
+                Some(0),
+                Some(0),
+                Some(1),
+                Some(1),
+                Some(1),
+                Some(1),
+                None,
+            ]
+        );
     }
 }

@@ -41,8 +41,8 @@ where
         out
     };
 
-    pub const BUCKET: [usize; T::VARIANT_COUNT] = {
-        let mut out = [0; T::VARIANT_COUNT];
+    pub const BUCKET: [Option<usize>; T::VARIANT_COUNT] = {
+        let mut out = [None; T::VARIANT_COUNT];
         let variants = T::VARIANTS;
 
         let mut i = 0;
@@ -52,12 +52,11 @@ where
             let mut j = 0;
             while j < T::SIZES_COUNT {
                 if Self::SIZES[j] == size {
-                    out[i] = j;
+                    out[i] = Some(j);
                     break;
                 }
                 j += 1;
             }
-
             i += 1;
         }
 
