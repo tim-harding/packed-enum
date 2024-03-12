@@ -17,27 +17,7 @@ pub trait EnumInfo {
             let mut i = 0;
             while i < variants.len() {
                 let variant = variants[i];
-                let mut min = usize::MAX;
-                let mut max = 0;
-
-                let mut j = 0;
-                while j < variant.len() {
-                    let field = &variant[j];
-
-                    let lo = field.offset;
-                    min = if min < lo { min } else { lo };
-
-                    let hi = field.offset + field.size;
-                    max = if max > hi { max } else { hi };
-
-                    j += 1;
-                }
-
-                let size = match max.checked_sub(min) {
-                    Some(size) => size,
-                    None => 0,
-                };
-
+                let size = variant_size(variant);
                 if size > prev_largest && size < next_largest {
                     next_largest = size;
                 }
@@ -61,4 +41,27 @@ pub struct VariantField {
     pub size: usize,
     pub align: usize,
     pub offset: usize,
+}
+
+const fn variant_size(fields: &[VariantField]) -> usize {
+    let mut min = usize::MAX;
+    let mut max = 0;
+
+    let mut i = 0;
+    while i < fields.len() {
+        let field = &fields[i];
+
+        let lo = field.offset;
+        min = if min < lo { min } else { lo };
+
+        let hi = field.offset + field.size;
+        max = if max > hi { max } else { hi };
+
+        i += 1;
+    }
+
+    match max.checked_sub(min) {
+        Some(size) => size,
+        None => 0,
+    }
 }
