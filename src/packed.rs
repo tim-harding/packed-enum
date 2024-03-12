@@ -1,20 +1,58 @@
-use crate::{variant_size, EnumInfo};
-use std::marker::PhantomData;
+use crate::{byte_vec::ByteVec, variant_size, EnumInfo};
+use std::{marker::PhantomData, mem::ManuallyDrop, ops::Deref};
 
-pub struct Packed<T: EnumInfo>
+pub struct Packed<T>
 where
-    [(); T::SIZES_COUNT]:,
-{
-    #[allow(unused)]
-    buckets: [Vec<u8>; T::SIZES_COUNT],
-    marker: PhantomData<T>,
-}
-
-impl<T: EnumInfo> Packed<T>
-where
+    T: EnumInfo,
     [(); T::SIZES_COUNT]:,
     [(); T::VARIANT_COUNT]:,
 {
+    entries: Vec<Entry>,
+    buckets: [ByteVec; T::SIZES_COUNT],
+    marker: PhantomData<T>,
+}
+
+impl<T> Packed<T>
+where
+    T: EnumInfo,
+    [(); T::SIZES_COUNT]:,
+    [(); T::VARIANT_COUNT]:,
+{
+    /// Creates a new, empty collection.
+    pub fn new() -> Self {
+        Self {
+            // TODO: Make new const when from_fn is const
+            buckets: std::array::from_fn(|_| ByteVec::new()),
+            entries: vec![],
+            marker: PhantomData,
+        }
+    }
+
+    pub fn push(&mut self, element: T) {
+        let element = ManuallyDrop::new(element);
+        let variant = element.variant_index();
+        let bucket_index = Self::BUCKET[variant];
+        if let Some(bucket_index) = bucket_index {
+            let size = Self::SIZES[variant];
+            let bound_hi = Self::COPY_END_BOUND[variant];
+            let bound_lo = bound_hi - size;
+            let ptr = std::ptr::from_ref(element.deref()).cast::<u8>();
+            let ptr = unsafe { ptr.add(bound_lo) };
+            let bucket = &mut self.buckets[bucket_index];
+            let index_in_bucket = bucket.len();
+            unsafe { bucket.push(ptr, size) };
+            self.entries.push(Entry {
+                variant,
+                index_in_bucket,
+            })
+        } else {
+            self.entries.push(Entry {
+                variant,
+                index_in_bucket: 0,
+            });
+        }
+    }
+
     pub const SIZES: [usize; T::SIZES_COUNT] = {
         let mut out = [0usize; T::SIZES_COUNT];
         let variants = T::VARIANTS;
@@ -91,4 +129,24 @@ where
 
         out
     };
+}
+
+impl<T> Drop for Packed<T>
+where
+    T: EnumInfo,
+    [(); T::SIZES_COUNT]:,
+    [(); T::VARIANT_COUNT]:,
+{
+    fn drop(&mut self) {
+        for (bucket, size) in self.buckets.iter_mut().zip(Self::SIZES) {
+            unsafe {
+                bucket.dealloc(size);
+            }
+        }
+    }
+}
+
+struct Entry {
+    variant: usize,
+    index_in_bucket: usize,
 }
