@@ -37,7 +37,7 @@ fn packed_inner(input: DeriveInput) -> Result<TokenStream2, PackedError> {
                     .map(|variant| match variant.fields.iter().next() {
                         Some(field) => match field.ident {
                             Some(_) => VariantKind::Struct,
-                            None => VariantKind::Tuple,
+                            None => VariantKind::Tuple(variant.fields.len()),
                         },
                         None => VariantKind::Empty,
                     });
@@ -105,7 +105,7 @@ fn packed_inner(input: DeriveInput) -> Result<TokenStream2, PackedError> {
 
 enum VariantKind {
     Empty,
-    Tuple,
+    Tuple(usize),
     Struct,
 }
 
@@ -113,7 +113,10 @@ impl ToTokens for VariantKind {
     fn to_tokens(&self, tokens: &mut TokenStream2) {
         match self {
             VariantKind::Empty => {}
-            VariantKind::Tuple => quote! { (_) }.to_tokens(tokens),
+            VariantKind::Tuple(field_count) => {
+                let iter = std::iter::repeat(quote! { _ }).take(*field_count);
+                quote! { (#(#iter),*) }.to_tokens(tokens)
+            }
             VariantKind::Struct => quote! { { .. } }.to_tokens(tokens),
         }
     }
