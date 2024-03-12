@@ -17,11 +17,13 @@ enum Test {
 
 #[cfg(test)]
 mod tests {
+    use packed_enum::Packed;
+
     use super::*;
 
     #[test]
     fn sizes_count() {
-        dbg!(Test::VARIANTS);
         assert_eq!(Test::SIZES_COUNT, 2);
+        assert_eq!(Packed::<Test>::SIZES, [4, 8]);
     }
 }

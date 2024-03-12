@@ -1,6 +1,7 @@
 #![feature(generic_const_exprs)]
 
 mod packed;
+pub use packed::Packed;
 
 pub use packed_enum_derive::EnumInfo;
 
