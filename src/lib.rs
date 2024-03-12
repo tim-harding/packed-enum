@@ -1,7 +1,11 @@
 #![feature(generic_const_exprs)]
 #![allow(incomplete_features)]
 
+mod byte_vec;
+
 mod packed;
+use core::panic;
+
 pub use packed::Packed;
 
 pub use packed_enum_derive::EnumInfo;
@@ -73,6 +77,10 @@ const fn variant_size(fields: &[VariantField]) -> usize {
         Some(size) => size,
         None => 0,
     };
+
+    if max_align > size {
+        panic!("Expected size to exceed alignment");
+    }
 
     // Taken from Layout::padding_needed_for
     let size_rounded_up = size.wrapping_add(max_align).wrapping_sub(1) & !max_align.wrapping_sub(1);
