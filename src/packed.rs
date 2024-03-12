@@ -41,8 +41,8 @@ where
         out
     };
 
-    pub const COPY_BOUNDS: [(usize, usize); T::VARIANT_COUNT] = {
-        let mut out = [(0, 0); T::VARIANT_COUNT];
+    pub const COPY_END_BOUND: [usize; T::VARIANT_COUNT] = {
+        let mut out = [0; T::VARIANT_COUNT];
         let variants = T::VARIANTS;
 
         let mut i = 0;
@@ -50,15 +50,11 @@ where
             let variant = variants[i];
 
             if variant.len() > 0 {
-                let mut min = usize::MAX;
                 let mut max = 0;
 
                 let mut j = 0;
                 while j < variant.len() {
                     let field = &variant[j];
-
-                    let lo = field.offset;
-                    min = if min < lo { min } else { lo };
 
                     let hi = field.offset + field.size;
                     max = if max > hi { max } else { hi };
@@ -66,7 +62,7 @@ where
                     j += 1;
                 }
 
-                out[i] = (min, max);
+                out[i] = max;
             }
 
             i += 1;
