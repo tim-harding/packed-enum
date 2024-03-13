@@ -31,7 +31,7 @@ fn packed_inner(input: DeriveInput) -> Result<TokenStream2, PackedError> {
     match data {
         Data::Enum(e) => {
             let snake = to_snake_case(&ident.to_string());
-            let strukts_module = format_ident!("{}_strukts", snake);
+            let strukt_module = format_ident!("{}_strukts", snake);
 
             let strukts = e.variants.iter().map(|variant| {
                 let Variant {
@@ -80,76 +80,199 @@ fn packed_inner(input: DeriveInput) -> Result<TokenStream2, PackedError> {
                 }
             });
 
-            let variant_idents = e.variants.iter().map(|variant| &variant.ident);
-            let variant_kinds =
-                e.variants
-                    .iter()
-                    .map(|variant| match variant.fields.iter().next() {
-                        Some(field) => match field.ident {
-                            Some(_) => VariantKind::Struct,
-                            None => VariantKind::Tuple(variant.fields.len()),
-                        },
-                        None => VariantKind::Empty,
-                    });
-            let variant_indices = e.variants.iter().enumerate().map(|(i, _)| i);
+            let variant_constructors: Vec<_> = e
+                .variants
+                .iter()
+                .map(|variant| {
+                    let Variant {
+                        ident: variant_ident,
+                        fields,
+                        ..
+                    } = variant;
 
-            let variants = e.variants.iter().map(|variant| {
-                let Variant {
-                    ident: variant_ident,
-                    fields: variant_fields,
-                    attrs: _,
-                    discriminant: _,
-                } = variant;
+                    if fields.len() == 0 {
+                        return quote! {
+                            #ident::#variant_ident
+                        };
+                    }
 
-                let fields_info = variant_fields.iter().enumerate().map(|(i, field)| {
-                    let Field {
-                        ident: field_ident,
-                        ty,
-                        attrs: _,
-                        vis: _,
-                        mutability: _,
-                        colon_token: _,
-                    } = field;
-
-                    let field_ident = match field_ident {
-                        Some(field_ident) => IdentOrIndex::Ident(field_ident),
-                        None => IdentOrIndex::Index(Index::from(i)),
-                    };
+                    let field_setters: Vec<_> = fields
+                        .iter()
+                        .enumerate()
+                        .map(|(i, field)| {
+                            let Field {
+                                ident: field_ident, ..
+                            } = field;
+                            let field_ident = IdentOrIndex::from_ident_index(field_ident, i);
+                            quote! {
+                                #field_ident: {
+                                    let ptr = ::std::ptr::from_ref(&construct_source.#field_ident);
+                                    unsafe { ptr.read() }
+                                },
+                            }
+                        })
+                        .collect();
 
                     quote! {
-                        ::packed_enum::VariantField {
-                            offset: ::std::mem::offset_of!(#ident, #variant_ident.#field_ident),
-                            size: ::std::mem::size_of::<#ty>(),
-                            align: ::std::mem::align_of::<#ty>(),
+                        #ident::#variant_ident {
+                            #(#field_setters)*
                         }
                     }
-                });
+                })
+                .collect();
 
-                quote! {
-                    &[#(#fields_info),*]
-                }
-            });
+            let field_variable_idents: Vec<Vec<_>> = e
+                .variants
+                .iter()
+                .map(|variant| {
+                    variant
+                        .fields
+                        .iter()
+                        .enumerate()
+                        .map(|(i, _)| format_ident!("field_{}", i))
+                        .collect()
+                })
+                .collect();
+
+            let strukt_constructors: Vec<_> = e
+                .variants
+                .iter()
+                .zip(&field_variable_idents)
+                .map(|(variant, field_variables)| {
+                    let Variant {
+                        ident: variant_ident,
+                        fields,
+                        ..
+                    } = variant;
+
+                    if fields.len() == 0 {
+                        return quote! {
+                            #strukt_module::#variant_ident
+                        };
+                    }
+
+                    let field_setters: Vec<_> = fields
+                        .iter()
+                        .zip(field_variables)
+                        .enumerate()
+                        .map(|(i, (field, field_variable))| {
+                            let Field {
+                                ident: field_ident, ..
+                            } = field;
+                            let field_ident = IdentOrIndex::from_ident_index(field_ident, i);
+                            quote! {
+                                #field_ident: {
+                                    let ptr = ::std::ptr::from_ref(#field_variable);
+                                    unsafe { ptr.read() }
+                                },
+                            }
+                        })
+                        .collect();
+
+                    quote! {
+                        #strukt_module::#variant_ident {
+                            #(#field_setters)*
+                        }
+                    }
+                })
+                .collect();
+
+            let arm_ignore: Vec<_> = e
+                .variants
+                .iter()
+                .map(|variant| match variant.fields.iter().next() {
+                    Some(field) => match field.ident {
+                        Some(_) => VariantKind::Struct,
+                        None => VariantKind::Tuple(variant.fields.len()),
+                    },
+                    None => VariantKind::Empty,
+                })
+                .collect();
+
+            let arm_variables: Vec<_> = e
+                .variants
+                .iter()
+                .zip(field_variable_idents)
+                .map(|(variant, field_variables)| {
+                    if variant.fields.len() == 0 {
+                        return quote! {};
+                    }
+
+                    let is_tuple = variant.fields.iter().next().unwrap().ident.is_none();
+                    if is_tuple {
+                        quote! {
+                            (#(#field_variables),*)
+                        }
+                    } else {
+                        let field_idents = variant.fields.iter().map(|field| &field.ident);
+                        quote! {
+                            {
+                                #(
+                                #field_idents: #field_variables,
+                                )*
+                            }
+                        }
+                    }
+                })
+                .collect();
+
+            let variant_idents: Vec<_> = e.variants.iter().map(|variant| &variant.ident).collect();
 
             let out = quote! {
-                mod #strukts_module {
+                mod #strukt_module {
                     #(#strukts)*
+
+                    pub enum Variant {
+                        #(#variant_idents,)*
+                    }
                 }
 
                 impl ::packed_enum::EnumInfo for #ident {
-                    const VARIANTS: &'static [&'static [::packed_enum::VariantField]] = &[
-                        #(#variants),*
+                    const SIZES: &'static [usize] = &[
+                        #(::std::mem::size_of::<#strukt_module::#variant_idents>(),)*
                     ];
 
-                    fn variant_index(&self) -> usize {
+                    const ALIGNS: &'static [usize] = &[
+                        #(::std::mem::align_of::<#strukt_module::#variant_idents>(),)*
+                    ];
+
+                    type Variant = #strukt_module::Variant;
+
+                    fn variant(&self) -> Self::Variant {
                         match self {
                             #(
-                            #ident::#variant_idents #variant_kinds => #variant_indices,
+                            #ident::#variant_idents #arm_ignore => Self::Variant::#variant_idents,
                             )*
                         }
                     }
 
-                    fn make_variant(variant_index: usize, data: *const u8) -> Self {
-                        todo!()
+                    fn read(variant: Self::Variant, data: *const u8) -> Self {
+                        match variant {
+                            #(
+                            #strukt_module::Variant::#variant_idents => {
+                                let ptr = data.cast::<#strukt_module::#variant_idents>();
+                                let construct_source = unsafe { ptr.as_ref().unwrap_unchecked() };
+                                #variant_constructors
+                            },
+                            )*
+                        }
+                    }
+
+                    fn write(self, dst: *mut u8) {
+                        let s = ::std::mem::ManuallyDrop::new(self);
+                        let construct_source = <::std::mem::ManuallyDrop<Self> as ::std::ops::Deref>::deref(&s);
+                        let strukt = match construct_source {
+                            #(
+                            #ident::#variant_idents #arm_variables => {
+                                let strukt = #strukt_constructors;
+                                let src = ::std::ptr::from_ref(&strukt).cast();
+                                let count = ::std::mem::size_of_val(&strukt);
+                                unsafe {
+                                    ::std::ptr::copy_nonoverlapping(src, dst, count);
+                                }
+                            },
+                            )*
+                        };
                     }
                 }
             };
@@ -197,6 +320,15 @@ impl ToTokens for VariantKind {
 enum IdentOrIndex<'a> {
     Ident(&'a Ident),
     Index(Index),
+}
+
+impl<'a> IdentOrIndex<'a> {
+    pub fn from_ident_index(ident: &'a Option<Ident>, index: usize) -> Self {
+        match ident {
+            Some(ident) => Self::Ident(ident),
+            None => Self::Index(Index::from(index)),
+        }
+    }
 }
 
 impl<'a> ToTokens for IdentOrIndex<'a> {

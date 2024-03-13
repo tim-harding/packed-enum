@@ -43,9 +43,5 @@ mod tests {
                 None,
             ]
         );
-        assert_eq!(
-            Packed::<Test>::COPY_END_BOUND,
-            [5, 6, 8, 9, 10, 12, 16, 8, 8, 0]
-        );
     }
 }
