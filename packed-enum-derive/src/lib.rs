@@ -222,8 +222,15 @@ fn packed_inner(input: DeriveInput) -> Result<TokenStream2, PackedError> {
                 mod #strukt_module {
                     #(#strukts)*
 
+                    #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
                     pub enum Variant {
                         #(#variant_idents,)*
+                    }
+
+                    impl ::packed_enum::AsIndex for Variant {
+                        fn as_index(&self) -> usize {
+                            *self as usize
+                        }
                     }
                 }
 

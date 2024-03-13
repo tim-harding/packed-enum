@@ -1,4 +1,4 @@
-use crate::{byte_vec::ByteVec, EnumInfo};
+use crate::{byte_vec::ByteVec, AsIndex, EnumInfo};
 use std::marker::PhantomData;
 
 pub struct Packed<T>
@@ -7,7 +7,8 @@ where
     [(); T::SIZES_COUNT]:,
     [(); T::SIZES.len()]:,
 {
-    entries: Vec<Entry>,
+    // TODO: Memory compaction of entries
+    entries: Vec<Entry<T>>,
     buckets: [ByteVec; T::SIZES_COUNT],
     marker: PhantomData<T>,
 }
@@ -26,6 +27,51 @@ where
             entries: vec![],
             marker: PhantomData,
         }
+    }
+
+    pub fn len(&self) -> usize {
+        self.entries.len()
+    }
+
+    pub fn capacity(&self) -> usize {
+        self.entries.capacity()
+    }
+
+    pub fn push(&mut self, element: T) {
+        let variant = element.variant();
+        let variant_index = variant.as_index();
+        if let Some(bucket) = Self::BUCKET[variant_index] {
+            let size = T::SIZES[variant_index];
+            let bucket = &mut self.buckets[bucket];
+            let index = bucket.len();
+            unsafe {
+                bucket.grow(size);
+            }
+            let dst = unsafe { bucket.get_mut(index, size) };
+            element.write(dst);
+            self.entries.push(Entry { variant, index })
+        } else {
+            self.entries.push(Entry { variant, index: 0 })
+        }
+    }
+
+    pub fn pop(&mut self) -> Option<T> {
+        self.entries.pop().map(|entry| {
+            let Entry { variant, index } = entry;
+            let variant_index = variant.as_index();
+            if let Some(bucket) = Self::BUCKET[variant_index] {
+                let size = T::SIZES[variant_index];
+                let bucket = &mut self.buckets[bucket];
+                let src = unsafe { bucket.get(index, size) };
+                unsafe {
+                    bucket.swap_remove(index, size);
+                }
+                T::read(variant, src)
+            } else {
+                // Null is okay here because we don't read the pointer for zero-sized variants
+                T::read(variant, std::ptr::null())
+            }
+        })
     }
 
     pub const SIZES: [usize; T::SIZES_COUNT] = {
@@ -91,7 +137,10 @@ where
     }
 }
 
-struct Entry {
-    variant: usize,
-    index_in_bucket: usize,
+struct Entry<T>
+where
+    T: EnumInfo,
+{
+    variant: T::Variant,
+    index: usize,
 }

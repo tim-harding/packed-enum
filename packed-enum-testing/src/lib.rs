@@ -4,7 +4,7 @@
 
 use packed_enum::EnumInfo;
 
-#[derive(EnumInfo)]
+#[derive(EnumInfo, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 enum Test {
     A(u8, u8, u8, u8),
     B(u16, u16),
@@ -43,5 +43,17 @@ mod tests {
                 None,
             ]
         );
+    }
+
+    #[test]
+    fn packed() {
+        let expected = [Test::A(1, 2, 3, 4), Test::B(5, 6), Test::H, Test::G(7)];
+        let mut packed = Packed::new();
+        for el in expected {
+            packed.push(el);
+        }
+        for expected in expected.into_iter().rev() {
+            assert_eq!(Some(expected), packed.pop());
+        }
     }
 }

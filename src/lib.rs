@@ -36,11 +36,15 @@ pub trait EnumInfo {
         count
     };
 
-    type Variant;
+    type Variant: AsIndex;
 
     fn variant(&self) -> Self::Variant;
 
     fn read(variant: Self::Variant, data: *const u8) -> Self;
 
     fn write(self, dst: *mut u8);
+}
+
+pub trait AsIndex {
+    fn as_index(&self) -> usize;
 }

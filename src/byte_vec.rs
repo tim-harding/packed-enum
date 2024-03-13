@@ -28,7 +28,7 @@ impl ByteVec {
     }
 
     /// Gets the allocated capacity of the collection in elements, not bytes.
-    pub const fn cap(&self) -> usize {
+    pub const fn capacity(&self) -> usize {
         self.cap
     }
 
@@ -77,6 +77,44 @@ impl ByteVec {
         );
 
         std::ptr::copy_nonoverlapping(src, dst, bytes);
+        self.len += 1;
+    }
+
+    /// Increases the collection size and allocates space for additional elements if needed.
+    ///
+    /// # Panics
+    ///
+    /// Panics on allocation failure.
+    ///
+    /// # Safety
+    ///
+    /// `bytes` must be the same value used in previous calls.
+    pub unsafe fn grow(&mut self, bytes: usize) {
+        if self.len == self.cap {
+            let (ptr, layout) = if self.cap == 0 {
+                self.cap = 4;
+
+                // We assert in variant_size that type size exceeds alignment, so the size of the data
+                // is sufficient for alignment
+                let Ok(layout) = Layout::from_size_align(self.cap * bytes, bytes) else {
+                    panic!("Capacity overflow");
+                };
+
+                let ptr = std::alloc::alloc(layout);
+                (ptr, layout)
+            } else {
+                // SAFETY: We created this layout for a previous allocation
+                let layout_prev = Layout::from_size_align_unchecked(self.cap * bytes, bytes);
+                self.cap *= 2;
+                let ptr = std::alloc::realloc(self.ptr.as_ptr(), layout_prev, self.cap * bytes);
+                (ptr, layout_prev)
+            };
+
+            if ptr.is_null() {
+                std::alloc::handle_alloc_error(layout);
+            }
+            self.ptr = NonNull::new_unchecked(ptr);
+        }
         self.len += 1;
     }
 
@@ -157,7 +195,7 @@ mod tests {
 
         let mut vec = ByteVec::new();
         assert_eq!(vec.len(), 0);
-        assert_eq!(vec.cap(), 0);
+        assert_eq!(vec.capacity(), 0);
 
         let to_push = [i64::MIN, i64::MAX, 0, -10, 10];
         for item in &to_push {
@@ -165,7 +203,7 @@ mod tests {
             unsafe { vec.push(ptr, EL_SIZE) };
         }
         assert_eq!(vec.len(), 5);
-        assert_eq!(vec.cap(), 8);
+        assert_eq!(vec.capacity(), 8);
 
         for (i, item) in to_push.iter().enumerate() {
             let actual = unsafe { vec.get(i, EL_SIZE) };
@@ -186,7 +224,7 @@ mod tests {
             vec.swap_remove(1, EL_SIZE);
         }
         assert_eq!(vec.len(), 3);
-        assert_eq!(vec.cap(), 8);
+        assert_eq!(vec.capacity(), 8);
 
         let new_expected = [i64::MIN, -10, 1234];
         for (i, item) in new_expected.iter().enumerate() {
