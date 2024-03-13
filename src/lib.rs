@@ -40,6 +40,8 @@ pub trait EnumInfo {
     };
 
     fn variant_index(&self) -> usize;
+
+    fn make_variant(variant_index: usize, data: *const u8) -> Self;
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
