@@ -84,11 +84,7 @@ where
     T: EnumInfo,
 {
     fn drop(&mut self) {
-        for (bucket, size) in self.buckets.iter_mut().zip(T::SIZES) {
-            unsafe {
-                bucket.dealloc(*size);
-            }
-        }
+        while self.pop().is_some() {}
     }
 }
 
