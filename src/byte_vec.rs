@@ -174,6 +174,7 @@ impl ByteVec {
     /// # Safety
     ///
     /// `bytes` must be the same value used in previous calls.
+    #[allow(unused)]
     pub unsafe fn dealloc(&mut self, bytes: usize) {
         if self.cap == 0 {
             return;
