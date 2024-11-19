@@ -11,9 +11,13 @@ pub trait EnumInfo {
     const SIZES: &'static [usize];
     const ALIGNS: &'static [usize];
     type Variant: AsIndex;
+    type Ref;
+    type Mut;
     fn variant(&self) -> Self::Variant;
-    fn read(variant: Self::Variant, data: *const u8) -> Self;
     fn write(self, dst: *mut u8);
+    fn read(variant: Self::Variant, data: *const u8) -> Self;
+    fn read_ref(data: *const u8) -> Self::Ref;
+    fn read_mut(data: *const u8) -> Self::Mut;
 }
 
 pub trait AsIndex {

@@ -35,91 +35,109 @@ fn packed_inner(input: DeriveInput) -> Result<TokenStream2, PackedError> {
 
             let strukts = e.variants.iter().map(|variant| {
                 let Variant {
-                    ident: variant_ident,
+                    ident: variant_ident_own,
                     fields: variant_fields,
                     ..
                 } = variant;
+                let variant_ident_ref = ident_ref(variant_ident_own);
+                let variant_ident_mut = ident_mut(variant_ident_own);
 
                 if variant_fields.is_empty() {
                     return quote! {
-                        pub struct #variant_ident;
+                        pub struct #variant_ident_own;
                     };
                 }
 
                 let is_tuple = variant_fields.iter().next().unwrap().ident.is_none();
 
-                let strukt_fields = variant_fields.iter().map(|field| {
-                    let Field {
-                        ident: field_ident,
-                        ty: field_ty,
-                        ..
-                    } = field;
-
-                    match field_ident {
-                        Some(field_ident) => quote! {
-                            pub #field_ident: #field_ty
-                        },
-                        None => quote! {
-                            pub #field_ty
-                        },
-                    }
-                });
+                let (strukt_fields_own, (strukt_fields_ref, strukt_fields_mut)): (
+                    Vec<_>,
+                    (Vec<_>, Vec<_>),
+                ) = variant_fields
+                    .iter()
+                    .map(|field| {
+                        let Field {
+                            ident: field_ident,
+                            ty: field_ty,
+                            ..
+                        } = field;
+                        let (a, b, c) = match field_ident {
+                            Some(field_ident) => (
+                                quote! { pub #field_ident:      #field_ty },
+                                quote! { pub #field_ident: &    #field_ty },
+                                quote! { pub #field_ident: &mut #field_ty },
+                            ),
+                            None => (
+                                quote! { pub      #field_ty },
+                                quote! { pub &    #field_ty },
+                                quote! { pub &mut #field_ty },
+                            ),
+                        };
+                        (a, (b, c))
+                    })
+                    .unzip();
 
                 if is_tuple {
                     quote! {
-                        pub struct #variant_ident(#(#strukt_fields),*);
+                        pub struct #variant_ident_own(#(#strukt_fields_own),*);
+                        pub struct #variant_ident_ref(#(#strukt_fields_ref),*);
+                        pub struct #variant_ident_mut(#(#strukt_fields_mut),*);
                     }
                 } else {
                     quote! {
-                        pub struct #variant_ident {
-                            #(
-                            #strukt_fields,
-                            )*
-                        }
+                        pub struct #variant_ident_own { #(#strukt_fields_own),* }
+                        pub struct #variant_ident_ref { #(#strukt_fields_ref),* }
+                        pub struct #variant_ident_mut { #(#strukt_fields_mut),* }
                     }
                 }
             });
 
-            let variant_constructors: Vec<_> = e
+            let (construct_own, (construct_ref, construct_mut)): (Vec<_>, (Vec<_>, Vec<_>)) = e
                 .variants
                 .iter()
                 .map(|variant| {
                     let Variant {
-                        ident: variant_ident,
+                        ident: variant_ident_own,
                         fields,
                         ..
                     } = variant;
+                    let variant_ident_ref = ident_ref(variant_ident_own);
+                    let variant_ident_mut = ident_mut(variant_ident_own);
 
                     if fields.is_empty() {
-                        return quote! {
-                            #ident::#variant_ident
-                        };
+                        let a = quote! { #ident::#variant_ident_own };
+                        let b = quote! { #ident::#variant_ident_ref };
+                        let c = quote! { #ident::#variant_ident_mut };
+                        return (a, (b, c));
                     }
 
-                    let field_setters: Vec<_> = fields
-                        .iter()
-                        .enumerate()
-                        .map(|(i, field)| {
+                    let (setters_own, (setters_ref, setters_mut)): (Vec<_>, (Vec<_>, Vec<_>)) =
+                        fields.iter().enumerate().map(|(i, field)| {
                             let Field {
                                 ident: field_ident, ..
                             } = field;
                             let field_ident = IdentOrIndex::from_ident_index(field_ident, i);
-                            quote! {
+                            let field_own = quote! {
                                 #field_ident: {
                                     let ptr = ::std::ptr::from_ref(&construct_source.#field_ident);
                                     unsafe { ptr.read() }
                                 },
-                            }
-                        })
-                        .collect();
+                            };
+                            let field_ref = quote! {
+                                #field_ident: &construct_source.#field_ident,
+                            };
+                            let field_mut = quote! {
+                                #field_ident: &mut construct_source.#field_ident,
+                            };
+                            (field_own, (field_ref, field_mut))
+                        }).unzip();
 
-                    quote! {
-                        #ident::#variant_ident {
-                            #(#field_setters)*
-                        }
-                    }
+                    let construct_own = quote! { #ident::#variant_ident_own { #(#setters_own)* } };
+                    let construct_ref = quote! { #ident::#variant_ident_own { #(#setters_ref)* } };
+                    let construct_mut = quote! { #ident::#variant_ident_own { #(#setters_mut)* } };
+                    (construct_own, (construct_ref, construct_mut))
                 })
-                .collect();
+                .unzip();
 
             let field_variable_idents: Vec<Vec<_>> = e
                 .variants
@@ -244,6 +262,8 @@ fn packed_inner(input: DeriveInput) -> Result<TokenStream2, PackedError> {
                     ];
 
                     type Variant = #strukt_module::Variant;
+                    type Ref = #strukt_module::Ref;
+                    type Mut = #strukt_module::Mut;
 
                     fn variant(&self) -> Self::Variant {
                         match self {
@@ -253,13 +273,37 @@ fn packed_inner(input: DeriveInput) -> Result<TokenStream2, PackedError> {
                         }
                     }
 
-                    fn read(variant: Self::Variant, data: *const u8) -> Self {
-                        match variant {
+                    fn read(data: *const u8) -> Self {
+                        match self.variant() {
                             #(
                             #strukt_module::Variant::#variant_idents => {
                                 let ptr = data.cast::<#strukt_module::#variant_idents>();
                                 let construct_source = unsafe { ptr.as_ref().unwrap_unchecked() };
-                                #variant_constructors
+                                #construct_own
+                            },
+                            )*
+                        }
+                    }
+
+                    fn read_ref(data: *const u8) -> Self::Ref {
+                        match self.variant() {
+                            #(
+                            #strukt_module::Variant::#variant_idents => {
+                                let ptr = data.cast::<#strukt_module::#variant_idents>();
+                                let construct_source = unsafe { ptr.as_ref().unwrap_unchecked() };
+                                #construct_ref
+                            },
+                            )*
+                        }
+                    }
+
+                    fn read_mut(data: *const u8) -> Self::Mut {
+                        match self.variant() {
+                            #(
+                            #strukt_module::Variant::#variant_idents => {
+                                let ptr = data.cast::<#strukt_module::#variant_idents>();
+                                let construct_source = unsafe { ptr.as_ref().unwrap_unchecked() };
+                                #construct_mut
                             },
                             )*
                         }
@@ -357,4 +401,12 @@ impl From<syn::Error> for PackedError {
     fn from(value: syn::Error) -> Self {
         Self::Syn(value)
     }
+}
+
+fn ident_ref(ident: &Ident) -> Ident {
+    format_ident!("{}Ref", ident)
+}
+
+fn ident_mut(ident: &Ident) -> Ident {
+    format_ident!("{}RefMut", ident)
 }
