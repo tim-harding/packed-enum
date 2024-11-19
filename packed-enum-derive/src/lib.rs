@@ -40,7 +40,7 @@ fn packed_inner(input: DeriveInput) -> Result<TokenStream2, PackedError> {
                     ..
                 } = variant;
 
-                if variant_fields.len() == 0 {
+                if variant_fields.is_empty() {
                     return quote! {
                         pub struct #variant_ident;
                     };
@@ -90,7 +90,7 @@ fn packed_inner(input: DeriveInput) -> Result<TokenStream2, PackedError> {
                         ..
                     } = variant;
 
-                    if fields.len() == 0 {
+                    if fields.is_empty() {
                         return quote! {
                             #ident::#variant_ident
                         };
@@ -145,7 +145,7 @@ fn packed_inner(input: DeriveInput) -> Result<TokenStream2, PackedError> {
                         ..
                     } = variant;
 
-                    if fields.len() == 0 {
+                    if fields.is_empty() {
                         return quote! {
                             #strukt_module::#variant_ident
                         };
@@ -194,7 +194,7 @@ fn packed_inner(input: DeriveInput) -> Result<TokenStream2, PackedError> {
                 .iter()
                 .zip(field_variable_idents)
                 .map(|(variant, field_variables)| {
-                    if variant.fields.len() == 0 {
+                    if variant.fields.is_empty() {
                         return quote! {};
                     }
 
