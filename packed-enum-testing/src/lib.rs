@@ -21,12 +21,12 @@ enum Test {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use packed_enum::Packed;
+    use packed_enum::Pack;
 
     #[test]
     fn packed() {
         let expected = [Test::A(1, 2, 3, 4), Test::B(5, 6), Test::H, Test::G(7)];
-        let mut packed = Packed::new();
+        let mut packed = Pack::new();
         for el in expected {
             packed.push(el);
         }

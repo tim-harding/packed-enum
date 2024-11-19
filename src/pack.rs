@@ -1,7 +1,7 @@
 use crate::{byte_vec::ByteVec, AsIndex, EnumInfo};
 use std::marker::PhantomData;
 
-pub struct Packed<T>
+pub struct Pack<T>
 where
     T: EnumInfo,
 {
@@ -12,7 +12,7 @@ where
     marker: PhantomData<T>,
 }
 
-impl<T> Packed<T>
+impl<T> Pack<T>
 where
     T: EnumInfo,
 {
@@ -22,13 +22,13 @@ where
             .take(T::SIZES.len())
             .collect();
         Self {
-            // TODO: Make new const when from_fn is const
             buckets,
             entries: vec![],
             marker: PhantomData,
         }
     }
 
+    /// Returns the number of elements in the slice
     pub fn len(&self) -> usize {
         self.entries.len()
     }
@@ -70,7 +70,7 @@ where
     }
 }
 
-impl<T> Default for Packed<T>
+impl<T> Default for Pack<T>
 where
     T: EnumInfo,
 {
@@ -79,7 +79,7 @@ where
     }
 }
 
-impl<T> Drop for Packed<T>
+impl<T> Drop for Pack<T>
 where
     T: EnumInfo,
 {
