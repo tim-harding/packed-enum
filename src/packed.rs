@@ -1,10 +1,6 @@
 use crate::{byte_vec::ByteVec, AsIndex, EnumInfo};
 use std::marker::PhantomData;
 
-// TODO:
-// - Replace generated structs with offset_of!
-// - Copy from enum start to last byte of variant to the storage
-
 pub struct Packed<T>
 where
     T: EnumInfo,
