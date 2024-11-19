@@ -28,6 +28,7 @@ impl ByteVec {
     }
 
     /// Gets the allocated capacity of the collection in elements, not bytes.
+    #[allow(unused)]
     pub const fn capacity(&self) -> usize {
         self.cap
     }
@@ -41,6 +42,7 @@ impl ByteVec {
     /// # Safety
     ///
     /// `bytes` must be the same value used in previous calls.
+    #[allow(unused)]
     pub unsafe fn push(&mut self, src: *const u8, bytes: usize) {
         if self.len == self.cap {
             let (ptr, layout) = if self.cap == 0 {

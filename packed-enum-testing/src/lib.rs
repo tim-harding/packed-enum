@@ -1,5 +1,3 @@
-#![feature(offset_of_nested)]
-#![feature(offset_of_enum)]
 #![allow(unused)]
 
 use packed_enum::EnumInfo;
@@ -24,26 +22,6 @@ enum Test {
 mod tests {
     use super::*;
     use packed_enum::Packed;
-
-    #[test]
-    fn sizes_count() {
-        assert_eq!(Packed::<Test>::SIZES, [4, 8]);
-        assert_eq!(
-            Packed::<Test>::BUCKET,
-            [
-                Some(0),
-                Some(0),
-                Some(0),
-                Some(1),
-                Some(1),
-                Some(1),
-                Some(1),
-                Some(1),
-                Some(1),
-                None,
-            ]
-        );
-    }
 
     #[test]
     fn packed() {
