@@ -1,9 +1,9 @@
-use crate::{byte_vec::ByteVec, AsIndex, EnumInfo};
+use crate::{byte_vec::ByteVec, AsIndex, Packable};
 use std::marker::PhantomData;
 
 pub struct Pack<T>
 where
-    T: EnumInfo,
+    T: Packable,
 {
     // TODO: Memory compaction of entries
     entries: Vec<Entry<T>>,
@@ -14,7 +14,7 @@ where
 
 impl<T> Pack<T>
 where
-    T: EnumInfo,
+    T: Packable,
 {
     /// Creates a new, empty collection.
     pub fn new() -> Self {
@@ -72,7 +72,7 @@ where
 
 impl<T> Default for Pack<T>
 where
-    T: EnumInfo,
+    T: Packable,
 {
     fn default() -> Self {
         Self::new()
@@ -81,7 +81,7 @@ where
 
 impl<T> Drop for Pack<T>
 where
-    T: EnumInfo,
+    T: Packable,
 {
     fn drop(&mut self) {
         while self.pop().is_some() {}
@@ -90,7 +90,7 @@ where
 
 struct Entry<T>
 where
-    T: EnumInfo,
+    T: Packable,
 {
     variant: T::Variant,
     index: usize,

@@ -1,8 +1,8 @@
 #![allow(unused)]
 
-use packed_enum::EnumInfo;
+use packed_enum::Packable;
 
-#[derive(EnumInfo, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Packable, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 enum Test {
     A(u8, u8, u8, u8),
     B(u16, u16),

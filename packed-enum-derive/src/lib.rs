@@ -3,7 +3,7 @@ use proc_macro2::{Ident, TokenStream as TokenStream2};
 use quote::{format_ident, quote, quote_spanned, ToTokens};
 use syn::{parse_macro_input, Data, DeriveInput, Field, Index, Variant};
 
-#[proc_macro_derive(EnumInfo)]
+#[proc_macro_derive(Packable)]
 pub fn packed(input: TokenStream) -> TokenStream {
     let input: DeriveInput = parse_macro_input!(input);
     let span = input.ident.span();
@@ -11,7 +11,7 @@ pub fn packed(input: TokenStream) -> TokenStream {
         Ok(tokens) => tokens,
         Err(e) => match e {
             PackedError::NotAnEnum => quote_spanned! {
-                span => compile_error!("Packed only applies to enums");
+                span => compile_error!("Packable only applies to enums");
             },
             PackedError::Syn(e) => e.into_compile_error(),
         },
@@ -252,7 +252,7 @@ fn packed_inner(input: DeriveInput) -> Result<TokenStream2, PackedError> {
                     }
                 }
 
-                impl ::packed_enum::EnumInfo for #ident {
+                impl ::packed_enum::Packable for #ident {
                     const SIZES: &'static [usize] = &[
                         #(::std::mem::size_of::<#strukt_module::#variant_idents>(),)*
                     ];

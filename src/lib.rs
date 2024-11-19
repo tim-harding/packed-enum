@@ -5,9 +5,9 @@ mod byte_vec;
 mod pack;
 
 pub use pack::Pack;
-pub use packed_enum_derive::EnumInfo;
+pub use packed_enum_derive::Packable;
 
-pub trait EnumInfo {
+pub trait Packable {
     const SIZES: &'static [usize];
     const ALIGNS: &'static [usize];
     type Variant: AsIndex;
