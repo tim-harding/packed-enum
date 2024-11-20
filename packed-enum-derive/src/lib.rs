@@ -240,7 +240,8 @@ fn field_reads(module: &Ident, variant: &Ident, fields: &Fields) -> Orm<Vec<Toke
 
 fn field_read(module: &Ident, variant: &Ident, field: &Field, i: usize) -> Orm<TokenStream2> {
     let field_ident = IdentOrIndex::from_ident_index(&field.ident, i);
-    let offset = quote! { ptr.byte_offset(offset_of!(#module::#variant, #field_ident)) };
+    let offset =
+        quote! { ptr.byte_offset(::std::mem::offset_of!(#module::#variant, #field_ident)) };
     Orm::new(
         quote! { #field_ident: unsafe { #offset.read()             } },
         quote! { #field_ident: unsafe { #offset.as_ref_unchecked() } },
