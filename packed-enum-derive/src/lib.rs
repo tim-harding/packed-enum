@@ -161,15 +161,12 @@ fn arm_ignore(variant: &Variant) -> VariantKind {
 }
 
 fn arm_variables_all(e: &DataEnum) -> Vec<TokenStream2> {
-    e.variants
-        .iter()
-        .zip(field_variable_idents_all(e))
-        .map(|(variant, field_variables)| arm_variables(variant, field_variables.as_slice()))
-        .collect()
+    e.variants.iter().map(arm_variables).collect()
 }
 
-fn arm_variables(variant: &Variant, field_variables: &[Ident]) -> TokenStream2 {
+fn arm_variables(variant: &Variant) -> TokenStream2 {
     let Variant { fields, .. } = variant;
+    let field_variables = field_variable_idents(variant);
     if fields.is_empty() {
         quote! {}
     } else if is_tuple(fields) {
@@ -178,10 +175,6 @@ fn arm_variables(variant: &Variant, field_variables: &[Ident]) -> TokenStream2 {
         let field_idents = fields.iter().map(|field| &field.ident);
         quote! { { #( #field_idents: #field_variables,)* } }
     }
-}
-
-fn field_variable_idents_all(e: &DataEnum) -> Vec<Vec<Ident>> {
-    e.variants.iter().map(field_variable_idents).collect()
 }
 
 fn field_variable_idents(variant: &Variant) -> Vec<Ident> {
