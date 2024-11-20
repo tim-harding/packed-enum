@@ -4,6 +4,9 @@ use orm::Orm;
 mod packed_error;
 use packed_error::PackedError;
 
+mod variant_kind;
+use variant_kind::VariantKind;
+
 use proc_macro::TokenStream;
 use proc_macro2::{Ident, TokenStream as TokenStream2};
 use quote::{format_ident, quote, quote_spanned, ToTokens};
@@ -207,25 +210,6 @@ fn to_snake_case(s: &str) -> String {
         }
     }
     out
-}
-
-enum VariantKind {
-    Empty,
-    Tuple(usize),
-    Struct,
-}
-
-impl ToTokens for VariantKind {
-    fn to_tokens(&self, tokens: &mut TokenStream2) {
-        match self {
-            VariantKind::Empty => {}
-            VariantKind::Tuple(field_count) => {
-                let iter = std::iter::repeat(quote! { _ }).take(*field_count);
-                quote! { (#(#iter),*) }.to_tokens(tokens)
-            }
-            VariantKind::Struct => quote! { { .. } }.to_tokens(tokens),
-        }
-    }
 }
 
 enum IdentOrIndex<'a> {
