@@ -44,26 +44,12 @@ fn packed_inner(input: DeriveInput) -> Result<TokenStream2, PackedError> {
         return Err(PackedError::NotAnEnum);
     };
 
-    let snake = to_snake_case(&ident.to_string());
-    let strukt_module = format_ident!("{}_strukts", snake);
-
-    let strukts = struct_definitions(&e);
-
     let construct = constructors(&ident, &e);
     let (construct_own, construct_ref, construct_mut) = construct.into_tuple();
 
-    let arm_ignore: Vec<_> = e
-        .variants
-        .iter()
-        .map(|variant| match variant.fields.iter().next() {
-            Some(field) => match field.ident {
-                Some(_) => VariantKind::Struct,
-                None => VariantKind::Tuple(variant.fields.len()),
-            },
-            None => VariantKind::Empty,
-        })
-        .collect();
-
+    let strukt_module = format_ident!("{}_strukts", to_snake_case(&ident.to_string()));
+    let strukts = struct_definitions(&e);
+    let arm_ignore = arm_ignore(&e);
     let arm_variables = arm_variables(&e);
     let variant_idents: Vec<_> = e.variants.iter().map(|variant| &variant.ident).collect();
 
@@ -160,6 +146,19 @@ fn packed_inner(input: DeriveInput) -> Result<TokenStream2, PackedError> {
     };
 
     Ok(out)
+}
+
+fn arm_ignore(e: &DataEnum) -> Vec<VariantKind> {
+    e.variants
+        .iter()
+        .map(|variant| match variant.fields.iter().next() {
+            Some(field) => match field.ident {
+                Some(_) => VariantKind::Struct,
+                None => VariantKind::Tuple(variant.fields.len()),
+            },
+            None => VariantKind::Empty,
+        })
+        .collect()
 }
 
 fn arm_variables(e: &DataEnum) -> Vec<TokenStream2> {
