@@ -1,6 +1,7 @@
 use quote::format_ident;
 use syn::Ident;
 
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Orm<T> {
     o: T,
     r: T,
@@ -65,5 +66,16 @@ impl<T> FromIterator<Orm<T>> for Orm<Vec<T>> {
     fn from_iter<I: IntoIterator<Item = Orm<T>>>(iter: I) -> Self {
         let (o, (r, m)) = iter.into_iter().map(Orm::into_tuple_nest).unzip();
         Self { o, r, m }
+    }
+}
+
+impl<T> Extend<Orm<T>> for Orm<Vec<T>> {
+    fn extend<I: IntoIterator<Item = Orm<T>>>(&mut self, iter: I) {
+        for item in iter.into_iter() {
+            let Orm { o, r, m } = item;
+            self.o.push(o);
+            self.r.push(r);
+            self.m.push(m);
+        }
     }
 }

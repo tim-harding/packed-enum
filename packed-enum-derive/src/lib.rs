@@ -13,7 +13,7 @@ use ident_or_index::IdentOrIndex;
 use proc_macro::TokenStream;
 use proc_macro2::{Ident, TokenStream as TokenStream2};
 use quote::{format_ident, quote, quote_spanned};
-use syn::{parse_macro_input, Data, DataEnum, DeriveInput, Field, Fields, Variant};
+use syn::{parse_macro_input, Data, DeriveInput, Field, Fields, Variant};
 
 #[proc_macro_derive(Packable)]
 pub fn packed(input: TokenStream) -> TokenStream {
@@ -44,13 +44,23 @@ fn packed_inner(input: DeriveInput) -> Result<TokenStream2, PackedError> {
         return Err(PackedError::NotAnEnum);
     };
 
-    let construct = constructors_all(&ident, &e);
-    let (construct_own, construct_ref, construct_mut) = construct.into_tuple();
+    let (construct, (strukts, (arm_ignore, arm_variables))): (
+        Orm<Vec<_>>,
+        (Vec<_>, (Vec<_>, Vec<_>)),
+    ) = e
+        .variants
+        .iter()
+        .map(|variant| {
+            let construct = constructors(&ident, variant);
+            let strukts = struct_definitions(variant);
+            let arm_ignore = arm_ignore(variant);
+            let arm_variables = arm_variables(variant);
+            (construct, (strukts, (arm_ignore, arm_variables)))
+        })
+        .collect();
 
+    let (construct_own, construct_ref, construct_mut) = construct.into_tuple();
     let strukt_module = format_ident!("{}_strukts", to_snake_case(&ident.to_string()));
-    let strukts = struct_definitions_all(&e);
-    let arm_ignore = arm_ignore_all(&e);
-    let arm_variables = arm_variables_all(&e);
     let variant_idents: Vec<_> = e.variants.iter().map(|variant| &variant.ident).collect();
 
     let out = quote! {
@@ -148,20 +158,12 @@ fn packed_inner(input: DeriveInput) -> Result<TokenStream2, PackedError> {
     Ok(out)
 }
 
-fn arm_ignore_all(e: &DataEnum) -> Vec<VariantKind> {
-    e.variants.iter().map(arm_ignore).collect()
-}
-
 fn arm_ignore(variant: &Variant) -> VariantKind {
     match variant.fields.iter().next() {
         Some(Field { ident: Some(_), .. }) => VariantKind::Struct,
         Some(Field { ident: None, .. }) => VariantKind::Tuple(variant.fields.len()),
         None => VariantKind::Empty,
     }
-}
-
-fn arm_variables_all(e: &DataEnum) -> Vec<TokenStream2> {
-    e.variants.iter().map(arm_variables).collect()
 }
 
 fn arm_variables(variant: &Variant) -> TokenStream2 {
@@ -198,13 +200,6 @@ fn to_snake_case(s: &str) -> String {
         }
     }
     out
-}
-
-fn constructors_all(ident: &Ident, e: &DataEnum) -> Orm<Vec<TokenStream2>> {
-    e.variants
-        .iter()
-        .map(|variant| constructors(ident, variant))
-        .collect()
 }
 
 fn constructors(ident: &Ident, variant: &Variant) -> Orm<TokenStream2> {
@@ -258,10 +253,6 @@ fn field_setter(field: &Field, i: usize) -> Orm<TokenStream2> {
         quote! { #field_ident: &    construct_source.#field_ident, },
         quote! { #field_ident: &mut construct_source.#field_ident, },
     )
-}
-
-fn struct_definitions_all(e: &DataEnum) -> Vec<TokenStream2> {
-    e.variants.iter().map(struct_definitions).collect()
 }
 
 fn struct_definitions(variant: &Variant) -> TokenStream2 {
