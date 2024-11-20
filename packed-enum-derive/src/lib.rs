@@ -50,7 +50,7 @@ fn packed_inner(input: DeriveInput) -> Result<TokenStream2, PackedError> {
     let strukt_module = format_ident!("{}_strukts", to_snake_case(&ident.to_string()));
     let strukts = struct_definitions(&e);
     let arm_ignore = arm_ignore_all(&e);
-    let arm_variables = arm_variables(&e);
+    let arm_variables = arm_variables_all(&e);
     let variant_idents: Vec<_> = e.variants.iter().map(|variant| &variant.ident).collect();
 
     let out = quote! {
@@ -160,32 +160,24 @@ fn arm_ignore(variant: &Variant) -> VariantKind {
     }
 }
 
-fn arm_variables(e: &DataEnum) -> Vec<TokenStream2> {
+fn arm_variables_all(e: &DataEnum) -> Vec<TokenStream2> {
     e.variants
         .iter()
         .zip(field_variable_idents(e))
-        .map(|(variant, field_variables)| {
-            if variant.fields.is_empty() {
-                return quote! {};
-            }
-
-            let is_tuple = variant.fields.iter().next().unwrap().ident.is_none();
-            if is_tuple {
-                quote! {
-                    (#(#field_variables),*)
-                }
-            } else {
-                let field_idents = variant.fields.iter().map(|field| &field.ident);
-                quote! {
-                    {
-                        #(
-                        #field_idents: #field_variables,
-                        )*
-                    }
-                }
-            }
-        })
+        .map(|(variant, field_variables)| arm_variables(variant, field_variables.as_slice()))
         .collect()
+}
+
+fn arm_variables(variant: &Variant, field_variables: &[Ident]) -> TokenStream2 {
+    let Variant { fields, .. } = variant;
+    if fields.is_empty() {
+        quote! {}
+    } else if is_tuple(fields) {
+        quote! { (#(#field_variables),*) }
+    } else {
+        let field_idents = fields.iter().map(|field| &field.ident);
+        quote! { { #( #field_idents: #field_variables,)* } }
+    }
 }
 
 fn field_variable_idents(e: &DataEnum) -> Vec<Vec<Ident>> {
