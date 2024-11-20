@@ -44,7 +44,7 @@ fn packed_inner(input: DeriveInput) -> Result<TokenStream2, PackedError> {
         return Err(PackedError::NotAnEnum);
     };
 
-    let construct = constructors(&ident, &e);
+    let construct = constructors_all(&ident, &e);
     let (construct_own, construct_ref, construct_mut) = construct.into_tuple();
 
     let strukt_module = format_ident!("{}_strukts", to_snake_case(&ident.to_string()));
@@ -200,23 +200,25 @@ fn to_snake_case(s: &str) -> String {
     out
 }
 
-fn constructors(ident: &Ident, e: &DataEnum) -> Orm<Vec<TokenStream2>> {
+fn constructors_all(ident: &Ident, e: &DataEnum) -> Orm<Vec<TokenStream2>> {
     e.variants
         .iter()
-        .map(|variant| {
-            let Variant {
-                ident: variant_ident,
-                fields,
-                ..
-            } = variant;
-            let variant_ident = Orm::from_ident(variant_ident.clone());
-            if fields.is_empty() {
-                constructor_empty(ident, &variant_ident)
-            } else {
-                constructor_full(ident, &variant_ident, fields)
-            }
-        })
+        .map(|variant| constructors(ident, variant))
         .collect()
+}
+
+fn constructors(ident: &Ident, variant: &Variant) -> Orm<TokenStream2> {
+    let Variant {
+        ident: variant_ident,
+        fields,
+        ..
+    } = variant;
+    let variant_ident = Orm::from_ident(variant_ident.clone());
+    if fields.is_empty() {
+        constructor_empty(ident, &variant_ident)
+    } else {
+        constructor_full(ident, &variant_ident, fields)
+    }
 }
 
 fn constructor_empty(ident: &Ident, variant_ident: &Orm<Ident>) -> Orm<TokenStream2> {
