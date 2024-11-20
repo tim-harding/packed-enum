@@ -40,6 +40,7 @@ fn packable_inner(input: DeriveInput) -> Result<TokenStream2, PackedError> {
     let variant_idents = variant_idents(&e);
     let arm_ignore = arm_ignore_all(&e);
     let arm_variables = arm_variables_all(&e);
+    let construct_struct = construct_struct_all(&module, &e);
     let (read_own, read_ref, read_mut) = read_all(&ident, &module, &e).into_tuple();
     let (defs_own, defs_ref, defs_mut) = defs_all(&e).into_tuple();
 
@@ -78,6 +79,7 @@ fn packable_inner(input: DeriveInput) -> Result<TokenStream2, PackedError> {
             }
         }
 
+        #[automatically_derived]
         impl ::packed_enum::Packable for #ident {
             const VARIANT_COUNT: usize = #variant_count;
 
@@ -112,16 +114,19 @@ fn packable_inner(input: DeriveInput) -> Result<TokenStream2, PackedError> {
             }
 
             fn write(self, dst: *mut u8) {
-                let s = ::std::mem::ManuallyDrop::new(self);
-                let construct_source = <::std::mem::ManuallyDrop<Self> as ::std::ops::Deref>::deref(&s);
-                let strukt = match construct_source {
+                let me = ::std::mem::ManuallyDrop::new(self);
+                let me = <::std::mem::ManuallyDrop<Self> as ::std::ops::Deref>::deref(&me);
+                let variant = <Self as ::packed_enum::Packable>::variant(me);
+                let (size, align) = ::packed_enum::Variant::size_align(&variant);
+                let bytes = size.max(align);
+                match me {
                     #(
                     #ident::#variant_idents #arm_variables => {
-                        let strukt = #read_own;
-                        let src = ::std::ptr::from_ref(&strukt).cast();
-                        let count = ::std::mem::size_of_val(&strukt);
+                        let strukt = ::std::mem::ManuallyDrop::new(#construct_struct);
+                        let strukt = <::std::mem::ManuallyDrop<#module::#variant_idents> as ::std::ops::Deref>::deref(&strukt);
+                        let src = ::std::ptr::from_ref(strukt).cast();
                         unsafe {
-                            ::std::ptr::copy_nonoverlapping(src, dst, count);
+                            ::std::ptr::copy_nonoverlapping(src, dst, bytes);
                         }
                     },
                     )*
@@ -136,6 +141,37 @@ fn packable_inner(input: DeriveInput) -> Result<TokenStream2, PackedError> {
     println!("{}", out);
 
     Ok(out)
+}
+
+fn construct_struct_all(module: &Ident, e: &DataEnum) -> Vec<TokenStream2> {
+    e.variants
+        .iter()
+        .map(|variant| construct_struct(module, variant))
+        .collect()
+}
+
+fn construct_struct(module: &Ident, variant: &Variant) -> TokenStream2 {
+    let Variant { ident, fields, .. } = variant;
+    let field_idents = field_idents(fields);
+    let field_variables = field_variables(fields);
+    quote! {
+        #module::#ident {
+            #(
+            #field_idents: {
+                let ptr = ::std::ptr::from_ref(#field_variables);
+                unsafe { ptr.read() }
+            }
+            ),*
+        }
+    }
+}
+
+fn field_idents(fields: &Fields) -> Vec<IdentOrIndex> {
+    fields
+        .iter()
+        .enumerate()
+        .map(|(i, field)| IdentOrIndex::from_ident_index(&field.ident, i))
+        .collect()
 }
 
 fn variant_idents(e: &DataEnum) -> Vec<&Ident> {
