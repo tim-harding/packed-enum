@@ -105,7 +105,7 @@ fn packable_inner(input: DeriveInput) -> Result<TokenStream2, PackedError> {
                 }
             }
 
-            fn read_mut<'a>(variant: Self::Variant, data: *const u8) -> Self::Mut<'a> {
+            fn read_mut<'a>(variant: Self::Variant, data: *mut u8) -> Self::Mut<'a> {
                 match variant {
                     #( #module::Variant::#variant_idents => { #read_mut } ),*
                 }
@@ -221,16 +221,18 @@ fn field_reads(module: &Ident, variant: &Ident, fields: &Fields) -> Orm<Vec<Toke
 }
 
 fn field_read(module: &Ident, variant: &Ident, field: &Field, i: usize) -> Orm<TokenStream2> {
-    let field_ident = IdentOrIndex::from_ident_index(&field.ident, i);
+    let Field { ident, ty, .. } = field;
+    let field_ident = IdentOrIndex::from_ident_index(ident, i);
     let offset = quote! {
         data.byte_offset(
             ::std::mem::offset_of!(#module::#variant, #field_ident) as isize,
-        ).cast()
+        ).cast::<#ty>()
     };
+    // TODO: Use as_ref_unchecked and as_mut_unchecked when stable
     Orm::new(
-        quote! { #field_ident: unsafe { #offset.read()             } },
-        quote! { #field_ident: unsafe { #offset.as_ref_unchecked() } },
-        quote! { #field_ident: unsafe { #offset.as_mut_unchecked() } },
+        quote! { #field_ident: unsafe { #offset.read()                      } },
+        quote! { #field_ident: unsafe { #offset.as_ref().unwrap_unchecked() } },
+        quote! { #field_ident: unsafe { #offset.as_mut().unwrap_unchecked() } },
     )
 }
 

@@ -18,7 +18,7 @@ pub trait Packable {
     fn write(self, dst: *mut u8);
     fn read(variant: Self::Variant, data: *const u8) -> Self;
     fn read_ref<'a>(variant: Self::Variant, data: *const u8) -> Self::Ref<'a>;
-    fn read_mut<'a>(variant: Self::Variant, data: *const u8) -> Self::Mut<'a>;
+    fn read_mut<'a>(variant: Self::Variant, data: *mut u8) -> Self::Mut<'a>;
 }
 
 pub trait Variant {
