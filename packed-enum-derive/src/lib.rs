@@ -197,18 +197,18 @@ fn read(enom: &Ident, module: &Ident, variant: &Variant) -> Orm<TokenStream2> {
 
 fn read_empty(enom: &Ident, variant: &Ident) -> Orm<TokenStream2> {
     Orm::new(
-        quote! { #enom::#variant },
-        quote! { #enom::#variant },
-        quote! { #enom::#variant },
+        quote! { #enom    ::#variant },
+        quote! { Self::Ref::#variant },
+        quote! { Self::Mut::#variant },
     )
 }
 
 fn read_full(enom: &Ident, module: &Ident, variant: &Ident, fields: &Fields) -> Orm<TokenStream2> {
     let (read_own, read_ref, read_mut) = field_reads(module, variant, fields).into_tuple();
     Orm::new(
-        quote! { #enom::#variant { #(#read_own),* } },
-        quote! { #enom::#variant { #(#read_ref),* } },
-        quote! { #enom::#variant { #(#read_mut),* } },
+        quote! { #enom    ::#variant { #(#read_own),* } },
+        quote! { Self::Ref::#variant { #(#read_ref),* } },
+        quote! { Self::Mut::#variant { #(#read_mut),* } },
     )
 }
 
