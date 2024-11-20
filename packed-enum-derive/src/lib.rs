@@ -13,7 +13,7 @@ use ident_or_index::IdentOrIndex;
 use proc_macro::TokenStream;
 use proc_macro2::{Ident, TokenStream as TokenStream2};
 use quote::{format_ident, quote, quote_spanned};
-use syn::{parse_macro_input, Data, DeriveInput, Field, Fields, Variant};
+use syn::{parse_macro_input, Data, DataEnum, DeriveInput, Field, Fields, Variant};
 
 #[proc_macro_derive(Packable)]
 pub fn packable(input: TokenStream) -> TokenStream {
@@ -37,21 +37,17 @@ fn packable_inner(input: DeriveInput) -> Result<TokenStream2, PackedError> {
 
     let module = format_ident!("{}_types", to_snake_case(&ident.to_string()));
 
-    #[allow(clippy::type_complexity)]
-    let (construct, (arm_ignore, (arm_variables, variant_idents))): (
-        Orm<Vec<_>>,
-        (Vec<_>, (Vec<_>, Vec<_>)),
-    ) = e
+    let (arm_ignore, (arm_variables, variant_idents)): (Vec<_>, (Vec<_>, Vec<_>)) = e
         .variants
         .iter()
         .map(|variant| {
-            let read = read(&ident, variant, &module);
             let arm_ignore = arm_ignore(variant);
             let arm_variables = arm_variables(variant);
-            (read, (arm_ignore, (arm_variables, &variant.ident)))
+            (arm_ignore, (arm_variables, &variant.ident))
         })
         .collect();
 
+    let construct = read_all(&ident, &module, &e);
     let variant_defs: Orm<Vec<_>> = e.variants.iter().map(variant_defs).collect();
     let (variant_own, variant_ref, variant_mut) = variant_defs.into_tuple();
     let (construct_own, construct_ref, construct_mut) = construct.into_tuple();
@@ -199,12 +195,19 @@ fn field_variables(fields: &Fields) -> Vec<Ident> {
         .collect()
 }
 
-fn read(enom: &Ident, variant: &Variant, module: &Ident) -> Orm<TokenStream2> {
+fn read_all(enom: &Ident, module: &Ident, e: &DataEnum) -> Orm<Vec<TokenStream2>> {
+    e.variants
+        .iter()
+        .map(|variant| read(enom, module, variant))
+        .collect()
+}
+
+fn read(enom: &Ident, module: &Ident, variant: &Variant) -> Orm<TokenStream2> {
     let Variant { ident, fields, .. } = variant;
     if fields.is_empty() {
         read_empty(enom, ident)
     } else {
-        read_full(enom, ident, fields, module)
+        read_full(enom, module, ident, fields)
     }
 }
 
@@ -216,8 +219,8 @@ fn read_empty(enom: &Ident, variant: &Ident) -> Orm<TokenStream2> {
     )
 }
 
-fn read_full(enom: &Ident, variant: &Ident, fields: &Fields, module: &Ident) -> Orm<TokenStream2> {
-    let (read_own, read_ref, read_mut) = field_reads(fields, module, variant).into_tuple();
+fn read_full(enom: &Ident, module: &Ident, variant: &Ident, fields: &Fields) -> Orm<TokenStream2> {
+    let (read_own, read_ref, read_mut) = field_reads(module, variant, fields).into_tuple();
     Orm::new(
         quote! { #enom::#variant { #(#read_own)* } },
         quote! { #enom::#variant { #(#read_ref)* } },
@@ -225,15 +228,15 @@ fn read_full(enom: &Ident, variant: &Ident, fields: &Fields, module: &Ident) -> 
     )
 }
 
-fn field_reads(fields: &Fields, module: &Ident, variant: &Ident) -> Orm<Vec<TokenStream2>> {
+fn field_reads(module: &Ident, variant: &Ident, fields: &Fields) -> Orm<Vec<TokenStream2>> {
     fields
         .iter()
         .enumerate()
-        .map(|(i, field)| field_read(field, i, module, variant))
+        .map(|(i, field)| field_read(module, variant, field, i))
         .collect()
 }
 
-fn field_read(field: &Field, i: usize, module: &Ident, variant: &Ident) -> Orm<TokenStream2> {
+fn field_read(module: &Ident, variant: &Ident, field: &Field, i: usize) -> Orm<TokenStream2> {
     let field_ident = IdentOrIndex::from_ident_index(&field.ident, i);
     let offset = quote! { ptr.byte_offset(offset_of!(#module::#variant, #field_ident)) };
     Orm::new(
