@@ -224,9 +224,9 @@ fn read_empty(enom: &Ident, variant: &Ident) -> Orm<TokenStream2> {
 fn read_full(enom: &Ident, module: &Ident, variant: &Ident, fields: &Fields) -> Orm<TokenStream2> {
     let (read_own, read_ref, read_mut) = field_reads(module, variant, fields).into_tuple();
     Orm::new(
-        quote! { #enom::#variant { #(#read_own)* } },
-        quote! { #enom::#variant { #(#read_ref)* } },
-        quote! { #enom::#variant { #(#read_mut)* } },
+        quote! { #enom::#variant { #(#read_own),* } },
+        quote! { #enom::#variant { #(#read_ref),* } },
+        quote! { #enom::#variant { #(#read_mut),* } },
     )
 }
 
@@ -242,9 +242,9 @@ fn field_read(module: &Ident, variant: &Ident, field: &Field, i: usize) -> Orm<T
     let field_ident = IdentOrIndex::from_ident_index(&field.ident, i);
     let offset = quote! { ptr.byte_offset(offset_of!(#module::#variant, #field_ident)) };
     Orm::new(
-        quote! { unsafe { #offset.read()             } },
-        quote! { unsafe { #offset.as_ref_unchecked() } },
-        quote! { unsafe { #offset.as_mut_unchecked() } },
+        quote! { #field_ident: unsafe { #offset.read()             } },
+        quote! { #field_ident: unsafe { #offset.as_ref_unchecked() } },
+        quote! { #field_ident: unsafe { #offset.as_mut_unchecked() } },
     )
 }
 
