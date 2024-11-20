@@ -181,30 +181,27 @@ fn field_variables(fields: &Fields) -> Vec<Ident> {
 
 fn constructors(enom: &Ident, variant: &Variant) -> Orm<TokenStream2> {
     let Variant { ident, fields, .. } = variant;
-    let ident = Orm::from_ident(ident);
     if fields.is_empty() {
-        constructor_empty(enom, &ident)
+        constructor_empty(enom, ident)
     } else {
-        constructor_full(enom, &ident, fields)
+        constructor_full(enom, ident, fields)
     }
 }
 
-fn constructor_empty(enom: &Ident, ident: &Orm<Ident>) -> Orm<TokenStream2> {
-    let (ident_own, ident_ref, ident_mut) = ident.as_ref().into_tuple();
+fn constructor_empty(enom: &Ident, variant: &Ident) -> Orm<TokenStream2> {
     Orm::new(
-        quote! { #enom::#ident_own },
-        quote! { #enom::#ident_ref },
-        quote! { #enom::#ident_mut },
+        quote! { #enom::#variant },
+        quote! { #enom::#variant },
+        quote! { #enom::#variant },
     )
 }
 
-fn constructor_full(enom: &Ident, ident: &Orm<Ident>, fields: &Fields) -> Orm<TokenStream2> {
+fn constructor_full(enom: &Ident, variant: &Ident, fields: &Fields) -> Orm<TokenStream2> {
     let (setters_own, setters_ref, setters_mut) = setters(fields).into_tuple();
-    let (ident_own, ident_ref, ident_mut) = ident.as_ref().into_tuple();
     Orm::new(
-        quote! { #enom::#ident_own { #(#setters_own)* } },
-        quote! { #enom::#ident_ref { #(#setters_ref)* } },
-        quote! { #enom::#ident_mut { #(#setters_mut)* } },
+        quote! { #enom::#variant { #(#setters_own)* } },
+        quote! { #enom::#variant { #(#setters_ref)* } },
+        quote! { #enom::#variant { #(#setters_mut)* } },
     )
 }
 
