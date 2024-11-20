@@ -295,5 +295,5 @@ fn is_tuple(fields: &Fields) -> bool {
         .iter()
         .next()
         .and_then(|field| field.ident.as_ref())
-        .is_some()
+        .is_none()
 }
