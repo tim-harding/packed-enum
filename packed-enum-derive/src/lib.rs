@@ -1,3 +1,6 @@
+mod orm;
+use orm::Orm;
+
 use proc_macro::TokenStream;
 use proc_macro2::{Ident, TokenStream as TokenStream2};
 use quote::{format_ident, quote, quote_spanned, ToTokens};
@@ -263,73 +266,6 @@ fn ident_ref(ident: &Ident) -> Ident {
 
 fn ident_mut(ident: &Ident) -> Ident {
     format_ident!("{}RefMut", ident)
-}
-
-impl Orm<Ident> {
-    pub fn from_ident(ident: Ident) -> Self {
-        Self {
-            r: format_ident!("{}Ref", ident),
-            m: format_ident!("{}Mut", ident),
-            o: ident,
-        }
-    }
-}
-
-struct Orm<T> {
-    o: T,
-    r: T,
-    m: T,
-}
-
-impl<T> Orm<T> {
-    pub const fn new(o: T, r: T, m: T) -> Self {
-        Self { o, r, m }
-    }
-
-    pub fn as_ref(&self) -> Orm<&T> {
-        Orm {
-            o: &self.o,
-            r: &self.r,
-            m: &self.m,
-        }
-    }
-
-    pub fn as_mut(&mut self) -> Orm<&mut T> {
-        Orm {
-            o: &mut self.o,
-            r: &mut self.r,
-            m: &mut self.m,
-        }
-    }
-
-    pub fn into_tuple(self) -> (T, T, T) {
-        let Self { o, r, m } = self;
-        (o, r, m)
-    }
-
-    pub fn into_tuple_nest(self) -> (T, (T, T)) {
-        let Self { o, r, m } = self;
-        (o, (r, m))
-    }
-}
-
-impl<T> From<(T, T, T)> for Orm<T> {
-    fn from((a, b, c): (T, T, T)) -> Self {
-        Self::new(a, b, c)
-    }
-}
-
-impl<T> From<Orm<T>> for (T, T, T) {
-    fn from(Orm { o, r, m }: Orm<T>) -> Self {
-        (o, r, m)
-    }
-}
-
-impl<T> FromIterator<Orm<T>> for Orm<Vec<T>> {
-    fn from_iter<I: IntoIterator<Item = Orm<T>>>(iter: I) -> Self {
-        let (o, (r, m)) = iter.into_iter().map(Orm::into_tuple_nest).unzip();
-        Self { o, r, m }
-    }
 }
 
 fn constructors(ident: &Ident, e: &DataEnum) -> Orm<Vec<TokenStream2>> {
