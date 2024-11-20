@@ -1,7 +1,7 @@
 use proc_macro::TokenStream;
 use proc_macro2::{Ident, TokenStream as TokenStream2};
 use quote::{format_ident, quote, quote_spanned, ToTokens};
-use syn::{parse_macro_input, Data, DeriveInput, Field, Index, Variant};
+use syn::{parse_macro_input, Data, DataEnum, DeriveInput, Field, Index, Variant};
 
 #[proc_macro_derive(Packable)]
 pub fn packed(input: TokenStream) -> TokenStream {
@@ -35,64 +35,7 @@ fn packed_inner(input: DeriveInput) -> Result<TokenStream2, PackedError> {
     let snake = to_snake_case(&ident.to_string());
     let strukt_module = format_ident!("{}_strukts", snake);
 
-    let strukts = e.variants.iter().map(|variant| {
-        let Variant {
-            ident: variant_ident_own,
-            fields: variant_fields,
-            ..
-        } = variant;
-        let variant_ident_ref = ident_ref(variant_ident_own);
-        let variant_ident_mut = ident_mut(variant_ident_own);
-
-        if variant_fields.is_empty() {
-            return quote! {
-                pub struct #variant_ident_own;
-            };
-        }
-
-        let is_tuple = variant_fields.iter().next().unwrap().ident.is_none();
-
-        let (strukt_fields_own, (strukt_fields_ref, strukt_fields_mut)): (
-            Vec<_>,
-            (Vec<_>, Vec<_>),
-        ) = variant_fields
-            .iter()
-            .map(|field| {
-                let Field {
-                    ident: field_ident,
-                    ty: field_ty,
-                    ..
-                } = field;
-                let (a, b, c) = match field_ident {
-                    Some(field_ident) => (
-                        quote! { pub #field_ident:      #field_ty },
-                        quote! { pub #field_ident: &    #field_ty },
-                        quote! { pub #field_ident: &mut #field_ty },
-                    ),
-                    None => (
-                        quote! { pub      #field_ty },
-                        quote! { pub &    #field_ty },
-                        quote! { pub &mut #field_ty },
-                    ),
-                };
-                (a, (b, c))
-            })
-            .unzip();
-
-        if is_tuple {
-            quote! {
-                pub struct #variant_ident_own    (#(#strukt_fields_own),*);
-                pub struct #variant_ident_ref<'a>(#(#strukt_fields_ref),*);
-                pub struct #variant_ident_mut<'a>(#(#strukt_fields_mut),*);
-            }
-        } else {
-            quote! {
-                pub struct #variant_ident_own     { #(#strukt_fields_own),* }
-                pub struct #variant_ident_ref<'a> { #(#strukt_fields_ref),* }
-                pub struct #variant_ident_mut<'a> { #(#strukt_fields_mut),* }
-            }
-        }
-    });
+    let strukts = struct_definitions(&e);
 
     let (construct_own, (construct_ref, construct_mut)): (Vec<_>, (Vec<_>, Vec<_>)) = e
         .variants
@@ -422,4 +365,118 @@ fn ident_ref(ident: &Ident) -> Ident {
 
 fn ident_mut(ident: &Ident) -> Ident {
     format_ident!("{}RefMut", ident)
+}
+
+struct OwnRefMut {
+    o: TokenStream2,
+    r: TokenStream2,
+    m: TokenStream2,
+}
+
+impl OwnRefMut {
+    pub const fn new(o: TokenStream2, r: TokenStream2, m: TokenStream2) -> Self {
+        Self { o, r, m }
+    }
+
+    pub fn into_tuple(self) -> (TokenStream2, TokenStream2, TokenStream2) {
+        let Self { o, r, m } = self;
+        (o, r, m)
+    }
+
+    pub fn into_tuple_nest(self) -> (TokenStream2, (TokenStream2, TokenStream2)) {
+        let Self { o, r, m } = self;
+        (o, (r, m))
+    }
+}
+
+impl From<(TokenStream2, TokenStream2, TokenStream2)> for OwnRefMut {
+    fn from((a, b, c): (TokenStream2, TokenStream2, TokenStream2)) -> Self {
+        Self::new(a, b, c)
+    }
+}
+
+impl From<OwnRefMut> for (TokenStream2, TokenStream2, TokenStream2) {
+    fn from(OwnRefMut { o, r, m }: OwnRefMut) -> Self {
+        (o, r, m)
+    }
+}
+
+struct OwnRefMutVec {
+    o: Vec<TokenStream2>,
+    r: Vec<TokenStream2>,
+    m: Vec<TokenStream2>,
+}
+
+impl OwnRefMutVec {
+    pub const fn new(o: Vec<TokenStream2>, r: Vec<TokenStream2>, m: Vec<TokenStream2>) -> Self {
+        Self { o, r, m }
+    }
+
+    pub fn into_tuple(self) -> (Vec<TokenStream2>, Vec<TokenStream2>, Vec<TokenStream2>) {
+        let Self { o, r, m } = self;
+        (o, r, m)
+    }
+}
+
+impl FromIterator<OwnRefMut> for OwnRefMutVec {
+    fn from_iter<T: IntoIterator<Item = OwnRefMut>>(iter: T) -> Self {
+        let (o, (r, m)) = iter.into_iter().map(OwnRefMut::into_tuple_nest).unzip();
+        Self { o, r, m }
+    }
+}
+
+fn struct_definitions(e: &DataEnum) -> Vec<TokenStream2> {
+    e.variants
+        .iter()
+        .map(|variant| {
+            let Variant {
+                ident: variant_ident_own,
+                fields,
+                ..
+            } = variant;
+            let variant_ident_ref = ident_ref(variant_ident_own);
+            let variant_ident_mut = ident_mut(variant_ident_own);
+
+            if fields.is_empty() {
+                return quote! {
+                    pub struct #variant_ident_own;
+                };
+            }
+
+            let fields_orm: OwnRefMutVec = fields.iter().map(variant_field_orm).collect();
+            let (fields_own, fields_ref, fields_mut) = fields_orm.into_tuple();
+
+            let is_tuple = fields.iter().next().unwrap().ident.is_none();
+            if is_tuple {
+                quote! {
+                    pub struct #variant_ident_own    (#(#fields_own),*);
+                    pub struct #variant_ident_ref<'a>(#(#fields_ref),*);
+                    pub struct #variant_ident_mut<'a>(#(#fields_mut),*);
+                }
+            } else {
+                quote! {
+                    pub struct #variant_ident_own     { #(#fields_own),* }
+                    pub struct #variant_ident_ref<'a> { #(#fields_ref),* }
+                    pub struct #variant_ident_mut<'a> { #(#fields_mut),* }
+                }
+            }
+        })
+        .collect()
+}
+
+fn variant_field_orm(field: &Field) -> OwnRefMut {
+    let Field { ident, ty, .. } = field;
+    match ident {
+        Some(ident) => (
+            quote! { pub #ident:      #ty },
+            quote! { pub #ident: &    #ty },
+            quote! { pub #ident: &mut #ty },
+        ),
+        None => (
+            quote! { pub      #ty },
+            quote! { pub &    #ty },
+            quote! { pub &mut #ty },
+        ),
+    }
+    .into()
 }
