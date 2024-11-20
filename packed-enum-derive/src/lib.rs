@@ -166,7 +166,7 @@ fn arm_variables_all(e: &DataEnum) -> Vec<TokenStream2> {
 
 fn arm_variables(variant: &Variant) -> TokenStream2 {
     let Variant { fields, .. } = variant;
-    let field_variables = field_variable_idents(variant);
+    let field_variables = field_variables(variant);
     if fields.is_empty() {
         quote! {}
     } else if is_tuple(fields) {
@@ -177,7 +177,7 @@ fn arm_variables(variant: &Variant) -> TokenStream2 {
     }
 }
 
-fn field_variable_idents(variant: &Variant) -> Vec<Ident> {
+fn field_variables(variant: &Variant) -> Vec<Ident> {
     variant
         .fields
         .iter()
