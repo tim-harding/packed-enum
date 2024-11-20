@@ -53,10 +53,11 @@ fn packable_inner(input: DeriveInput) -> Result<TokenStream2, PackedError> {
     let variant_defs: Orm<Vec<_>> = e.variants.iter().map(variant_defs).collect();
     let (variant_own, variant_ref, variant_mut) = variant_defs.into_tuple();
     let (construct_own, construct_ref, construct_mut) = construct.into_tuple();
-    let strukt_module = format_ident!("{}_structs", to_snake_case(&ident.to_string()));
+    let module = format_ident!("{}_types", to_snake_case(&ident.to_string()));
+    let variant_count = e.variants.len();
 
     let out = quote! {
-        mod #strukt_module {
+        mod #module {
             #(#variant_own)*
 
             pub enum Ref {
@@ -72,25 +73,30 @@ fn packable_inner(input: DeriveInput) -> Result<TokenStream2, PackedError> {
                 #(#variant_idents,)*
             }
 
-            impl ::packed_enum::AsIndex for Variant {
+            impl ::packed_enum::Variant for Variant {
                 fn as_index(&self) -> usize {
                     *self as usize
+                }
+
+                fn size_align(&self) -> (usize, usize) {
+                    match self {
+                        #(
+                        Self::#variant_idents => (
+                            ::std::mem::size_of ::<#module::#variant_idents>(),
+                            ::std::mem::align_of::<#module::#variant_idents>(),
+                        ),
+                        )*
+                    }
                 }
             }
         }
 
         impl ::packed_enum::Packable for #ident {
-            const SIZES: &'static [usize] = &[
-                #(::std::mem::size_of::<#strukt_module::#variant_idents>(),)*
-            ];
+            const VARIANT_COUNT: usize = #variant_count;
 
-            const ALIGNS: &'static [usize] = &[
-                #(::std::mem::align_of::<#strukt_module::#variant_idents>(),)*
-            ];
-
-            type Variant = #strukt_module::Variant;
-            type Ref = #strukt_module::Ref;
-            type Mut = #strukt_module::Mut;
+            type Variant = #module::Variant;
+            type Ref<'a> = #module::Ref<'a>;
+            type Mut<'a> = #module::Mut<'a>;
 
             fn variant(&self) -> Self::Variant {
                 match self {
@@ -100,11 +106,11 @@ fn packable_inner(input: DeriveInput) -> Result<TokenStream2, PackedError> {
                 }
             }
 
-            fn read(data: *const u8) -> Self {
+            fn read(variant: Self::Variant, data: *const u8) -> Self {
                 match self.variant() {
                     #(
-                    #strukt_module::Variant::#variant_idents => {
-                        let ptr = data.cast::<#strukt_module::#variant_idents>();
+                    #module::Variant::#variant_idents => {
+                        let ptr = data.cast::<#module::#variant_idents>();
                         let construct_source = unsafe { ptr.as_ref().unwrap_unchecked() };
                         #construct_own
                     },
@@ -112,11 +118,11 @@ fn packable_inner(input: DeriveInput) -> Result<TokenStream2, PackedError> {
                 }
             }
 
-            fn read_ref(data: *const u8) -> Self::Ref {
+            fn read_ref<'a>(variant: Self::Variant, data: *const u8) -> Self::Ref<'a> {
                 match self.variant() {
                     #(
-                    #strukt_module::Variant::#variant_idents => {
-                        let ptr = data.cast::<#strukt_module::#variant_idents>();
+                    #module::Variant::#variant_idents => {
+                        let ptr = data.cast::<#module::#variant_idents>();
                         let construct_source = unsafe { ptr.as_ref().unwrap_unchecked() };
                         #construct_ref
                     },
@@ -124,11 +130,11 @@ fn packable_inner(input: DeriveInput) -> Result<TokenStream2, PackedError> {
                 }
             }
 
-            fn read_mut(data: *const u8) -> Self::Mut {
+            fn read_mut<'a>(variant: Self::Variant, data: *const u8) -> Self::Mut<'a> {
                 match self.variant() {
                     #(
-                    #strukt_module::Variant::#variant_idents => {
-                        let ptr = data.cast::<#strukt_module::#variant_idents>();
+                    #module::Variant::#variant_idents => {
+                        let ptr = data.cast::<#module::#variant_idents>();
                         let construct_source = unsafe { ptr.as_ref().unwrap_unchecked() };
                         #construct_mut
                     },

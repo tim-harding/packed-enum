@@ -19,7 +19,7 @@ where
     /// Creates a new, empty collection.
     pub fn new() -> Self {
         let buckets: Vec<_> = std::iter::repeat_with(ByteVec::new)
-            .take(T::SIZES.len())
+            .take(T::VARIANT_COUNT)
             .collect();
         Self {
             buckets,
@@ -44,7 +44,7 @@ where
     pub fn push(&mut self, element: T) {
         let variant = element.variant();
         let variant_index = variant.as_index();
-        let size = T::SIZES[variant_index];
+        let size = variant.size_align().0;
         let bucket = &mut self.buckets[variant_index];
         let index = bucket.len();
         unsafe {
@@ -59,7 +59,7 @@ where
         self.entries.pop().map(|entry| {
             let Entry { variant, index } = entry;
             let variant_index = variant.as_index();
-            let size = T::SIZES[variant_index];
+            let size = variant.size_align().0;
             let bucket = &mut self.buckets[variant_index];
             let src = unsafe { bucket.get(index, size) };
             unsafe {

@@ -8,12 +8,14 @@ pub use pack::Pack;
 pub use packed_enum_derive::Packable;
 
 pub trait Packable {
+    const VARIANT_COUNT: usize;
+
     type Variant: Variant;
     type Ref<'a>;
     type Mut<'a>;
 
     fn variant(&self) -> Self::Variant;
-    fn write(&self, dst: *mut u8);
+    fn write(self, dst: *mut u8);
     fn read(variant: Self::Variant, data: *const u8) -> Self;
     fn read_ref<'a>(variant: Self::Variant, data: *const u8) -> Self::Ref<'a>;
     fn read_mut<'a>(variant: Self::Variant, data: *const u8) -> Self::Mut<'a>;
