@@ -52,19 +52,6 @@ fn packed_inner(input: DeriveInput) -> Result<TokenStream2, PackedError> {
     let construct = constructors(&ident, &e);
     let (construct_own, construct_ref, construct_mut) = construct.into_tuple();
 
-    let field_variable_idents: Vec<Vec<_>> = e
-        .variants
-        .iter()
-        .map(|variant| {
-            variant
-                .fields
-                .iter()
-                .enumerate()
-                .map(|(i, _)| format_ident!("field_{}", i))
-                .collect()
-        })
-        .collect();
-
     let arm_ignore: Vec<_> = e
         .variants
         .iter()
@@ -77,33 +64,7 @@ fn packed_inner(input: DeriveInput) -> Result<TokenStream2, PackedError> {
         })
         .collect();
 
-    let arm_variables: Vec<_> = e
-        .variants
-        .iter()
-        .zip(field_variable_idents)
-        .map(|(variant, field_variables)| {
-            if variant.fields.is_empty() {
-                return quote! {};
-            }
-
-            let is_tuple = variant.fields.iter().next().unwrap().ident.is_none();
-            if is_tuple {
-                quote! {
-                    (#(#field_variables),*)
-                }
-            } else {
-                let field_idents = variant.fields.iter().map(|field| &field.ident);
-                quote! {
-                    {
-                        #(
-                        #field_idents: #field_variables,
-                        )*
-                    }
-                }
-            }
-        })
-        .collect();
-
+    let arm_variables = arm_variables(&e);
     let variant_idents: Vec<_> = e.variants.iter().map(|variant| &variant.ident).collect();
 
     let out = quote! {
@@ -199,6 +160,48 @@ fn packed_inner(input: DeriveInput) -> Result<TokenStream2, PackedError> {
     };
 
     Ok(out)
+}
+
+fn arm_variables(e: &DataEnum) -> Vec<TokenStream2> {
+    e.variants
+        .iter()
+        .zip(field_variable_idents(e))
+        .map(|(variant, field_variables)| {
+            if variant.fields.is_empty() {
+                return quote! {};
+            }
+
+            let is_tuple = variant.fields.iter().next().unwrap().ident.is_none();
+            if is_tuple {
+                quote! {
+                    (#(#field_variables),*)
+                }
+            } else {
+                let field_idents = variant.fields.iter().map(|field| &field.ident);
+                quote! {
+                    {
+                        #(
+                        #field_idents: #field_variables,
+                        )*
+                    }
+                }
+            }
+        })
+        .collect()
+}
+
+fn field_variable_idents(e: &DataEnum) -> Vec<Vec<Ident>> {
+    e.variants
+        .iter()
+        .map(|variant| {
+            variant
+                .fields
+                .iter()
+                .enumerate()
+                .map(|(i, _)| format_ident!("field_{}", i))
+                .collect()
+        })
+        .collect()
 }
 
 fn to_snake_case(s: &str) -> String {
