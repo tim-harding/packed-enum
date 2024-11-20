@@ -47,11 +47,11 @@ fn packable_inner(input: DeriveInput) -> Result<TokenStream2, PackedError> {
         mod #module {
             #(#defs_own)*
 
-            pub enum Ref {
+            pub enum Ref<'a> {
                 #(#defs_ref),*
             }
 
-            pub enum Mut {
+            pub enum Mut<'a> {
                 #(#defs_mut),*
             }
 
@@ -269,14 +269,14 @@ fn field_orm(field: &Field) -> Orm<TokenStream2> {
     let Field { ident, ty, .. } = field;
     match ident {
         Some(ident) => Orm::new(
-            quote! { pub #ident:      #ty },
-            quote! {     #ident: &    #ty },
-            quote! {     #ident: &mut #ty },
+            quote! { pub #ident:         #ty },
+            quote! {     #ident: &'a     #ty },
+            quote! {     #ident: &'a mut #ty },
         ),
         None => Orm::new(
-            quote! { pub      #ty },
-            quote! {     &    #ty },
-            quote! {     &mut #ty },
+            quote! { pub         #ty },
+            quote! {     &'a     #ty },
+            quote! {     &'a mut #ty },
         ),
     }
 }
