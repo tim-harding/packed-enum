@@ -137,8 +137,8 @@ fn packable_inner(input: DeriveInput) -> Result<TokenStream2, PackedError> {
 
     // Debugging utility. Sometimes `cargo expand` doesn't actually show the macro output if we don't
     // produce a valid token sequence. To show only the macro expansion, use
-    // cargo build 2>/dev/null | bat --language rust
-    println!("{}", out);
+    // cargo build 2>/dev/null | rustfmt | bat --language rust
+    // println!("{}", out);
 
     Ok(out)
 }

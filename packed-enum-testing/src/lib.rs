@@ -1,3 +1,5 @@
+#![allow(unused)]
+
 use packed_enum::Packable;
 
 #[derive(Packable, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
