@@ -8,20 +8,20 @@ pub use pack::Pack;
 pub use packed_enum_derive::Packable;
 
 pub trait Packable {
-    const SIZES: &'static [usize];
-    const ALIGNS: &'static [usize];
-    type Variant: AsIndex;
-    type Ref;
-    type Mut;
+    type Variant: Variant;
+    type Ref<'a>;
+    type Mut<'a>;
+
     fn variant(&self) -> Self::Variant;
-    fn write(self, dst: *mut u8);
+    fn write(&self, dst: *mut u8);
     fn read(variant: Self::Variant, data: *const u8) -> Self;
-    fn read_ref(data: *const u8) -> Self::Ref;
-    fn read_mut(data: *const u8) -> Self::Mut;
+    fn read_ref<'a>(variant: Self::Variant, data: *const u8) -> Self::Ref<'a>;
+    fn read_mut<'a>(variant: Self::Variant, data: *const u8) -> Self::Mut<'a>;
 }
 
-pub trait AsIndex {
+pub trait Variant {
     fn as_index(&self) -> usize;
+    fn size_align(&self) -> (usize, usize);
 }
 
 /*

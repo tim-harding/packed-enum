@@ -1,4 +1,4 @@
-use crate::{byte_vec::ByteVec, AsIndex, Packable};
+use crate::{byte_vec::ByteVec, Packable, Variant};
 use std::marker::PhantomData;
 
 pub struct Pack<T>

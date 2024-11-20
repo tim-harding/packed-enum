@@ -1,21 +1,10 @@
-#![allow(unused)]
-
 use packed_enum::Packable;
 
 #[derive(Packable, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 enum Test {
     A(u8, u8, u8, u8),
-    B(u16, u16),
-    C(u32),
-    D(u8, u8, u8, u8, u8, u8, u8, u8),
-    E(u16, u16, u16, u16),
-    F(u32, u32),
-    G(u64),
-
-    I(u8, u16, u32),
-    J(u16, u32),
-
-    H,
+    B { foo: u16, bar: u16 },
+    C,
 }
 
 #[cfg(test)]
@@ -25,7 +14,7 @@ mod tests {
 
     #[test]
     fn packed() {
-        let expected = [Test::A(1, 2, 3, 4), Test::B(5, 6), Test::H, Test::G(7)];
+        let expected = [Test::A(1, 2, 3, 4), Test::B { foo: 5, bar: 6 }, Test::C];
         let mut packed = Pack::new();
         for el in expected {
             packed.push(el);
