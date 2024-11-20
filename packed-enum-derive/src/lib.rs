@@ -163,7 +163,7 @@ fn arm_ignore(variant: &Variant) -> VariantKind {
 fn arm_variables_all(e: &DataEnum) -> Vec<TokenStream2> {
     e.variants
         .iter()
-        .zip(field_variable_idents(e))
+        .zip(field_variable_idents_all(e))
         .map(|(variant, field_variables)| arm_variables(variant, field_variables.as_slice()))
         .collect()
 }
@@ -180,17 +180,16 @@ fn arm_variables(variant: &Variant, field_variables: &[Ident]) -> TokenStream2 {
     }
 }
 
-fn field_variable_idents(e: &DataEnum) -> Vec<Vec<Ident>> {
-    e.variants
+fn field_variable_idents_all(e: &DataEnum) -> Vec<Vec<Ident>> {
+    e.variants.iter().map(field_variable_idents).collect()
+}
+
+fn field_variable_idents(variant: &Variant) -> Vec<Ident> {
+    variant
+        .fields
         .iter()
-        .map(|variant| {
-            variant
-                .fields
-                .iter()
-                .enumerate()
-                .map(|(i, _)| format_ident!("field_{}", i))
-                .collect()
-        })
+        .enumerate()
+        .map(|(i, _)| format_ident!("field_{}", i))
         .collect()
 }
 
