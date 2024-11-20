@@ -69,8 +69,8 @@ fn packable_inner(input: DeriveInput) -> Result<TokenStream2, PackedError> {
                     match self {
                         #(
                         Self::#variant_idents => (
-                            ::std::mem::size_of ::<#module::#variant_idents>(),
-                            ::std::mem::align_of::<#module::#variant_idents>(),
+                            ::std::mem::size_of ::<#variant_idents>(),
+                            ::std::mem::align_of::<#variant_idents>(),
                         ),
                         )*
                     }
