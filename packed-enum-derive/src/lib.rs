@@ -16,37 +16,29 @@ use quote::{format_ident, quote, quote_spanned};
 use syn::{parse_macro_input, Data, DeriveInput, Field, Fields, Variant};
 
 #[proc_macro_derive(Packable)]
-pub fn packed(input: TokenStream) -> TokenStream {
+pub fn packable(input: TokenStream) -> TokenStream {
     let input: DeriveInput = parse_macro_input!(input);
     let span = input.ident.span();
-    match packed_inner(input) {
+    match packable_inner(input) {
         Ok(tokens) => tokens,
-        Err(e) => match e {
-            PackedError::NotAnEnum => quote_spanned! {
-                span => compile_error!("Packable only applies to enums");
-            },
-            PackedError::Syn(e) => e.into_compile_error(),
+        Err(PackedError::Syn(e)) => e.into_compile_error(),
+        Err(PackedError::NotAnEnum) => quote_spanned! {
+            span => compile_error!("Packable only applies to enums");
         },
     }
     .into()
 }
 
-fn packed_inner(input: DeriveInput) -> Result<TokenStream2, PackedError> {
-    let DeriveInput {
-        data,
-        ident,
-        vis: _,
-        generics: _,
-        attrs: _,
-    } = input;
-
+fn packable_inner(input: DeriveInput) -> Result<TokenStream2, PackedError> {
+    let DeriveInput { data, ident, .. } = input;
     let Data::Enum(e) = data else {
         return Err(PackedError::NotAnEnum);
     };
 
-    let (construct, (strukts, (arm_ignore, arm_variables))): (
+    #[allow(clippy::type_complexity)]
+    let (construct, (strukts, (arm_ignore, (arm_variables, variant_idents)))): (
         Orm<Vec<_>>,
-        (Vec<_>, (Vec<_>, Vec<_>)),
+        (Vec<_>, (Vec<_>, (Vec<_>, Vec<_>))),
     ) = e
         .variants
         .iter()
@@ -55,15 +47,17 @@ fn packed_inner(input: DeriveInput) -> Result<TokenStream2, PackedError> {
             let strukts = struct_definitions(variant);
             let arm_ignore = arm_ignore(variant);
             let arm_variables = arm_variables(variant);
-            (construct, (strukts, (arm_ignore, arm_variables)))
+            (
+                construct,
+                (strukts, (arm_ignore, (arm_variables, &variant.ident))),
+            )
         })
         .collect();
 
     let (construct_own, construct_ref, construct_mut) = construct.into_tuple();
-    let strukt_module = format_ident!("{}_strukts", to_snake_case(&ident.to_string()));
-    let variant_idents: Vec<_> = e.variants.iter().map(|variant| &variant.ident).collect();
+    let strukt_module = format_ident!("{}_structs", to_snake_case(&ident.to_string()));
 
-    let out = quote! {
+    Ok(quote! {
         mod #strukt_module {
             #(#strukts)*
 
@@ -153,9 +147,7 @@ fn packed_inner(input: DeriveInput) -> Result<TokenStream2, PackedError> {
                 };
             }
         }
-    };
-
-    Ok(out)
+    })
 }
 
 fn arm_ignore(variant: &Variant) -> VariantKind {
@@ -168,7 +160,7 @@ fn arm_ignore(variant: &Variant) -> VariantKind {
 
 fn arm_variables(variant: &Variant) -> TokenStream2 {
     let Variant { fields, .. } = variant;
-    let field_variables = field_variables(variant);
+    let field_variables = field_variables(&variant.fields);
     if fields.is_empty() {
         quote! {}
     } else if is_tuple(fields) {
@@ -179,59 +171,40 @@ fn arm_variables(variant: &Variant) -> TokenStream2 {
     }
 }
 
-fn field_variables(variant: &Variant) -> Vec<Ident> {
-    variant
-        .fields
+fn field_variables(fields: &Fields) -> Vec<Ident> {
+    fields
         .iter()
         .enumerate()
         .map(|(i, _)| format_ident!("field_{}", i))
         .collect()
 }
 
-fn to_snake_case(s: &str) -> String {
-    let mut chars = s.chars();
-    let mut out = String::new();
-    out.extend(chars.next().iter().flat_map(|c| c.to_lowercase()));
-    for c in chars {
-        if c.is_lowercase() {
-            out.push(c);
-        } else {
-            out.extend(std::iter::once('_').chain(c.to_lowercase()))
-        }
-    }
-    out
-}
-
-fn constructors(ident: &Ident, variant: &Variant) -> Orm<TokenStream2> {
-    let Variant {
-        ident: variant_ident,
-        fields,
-        ..
-    } = variant;
-    let variant_ident = Orm::from_ident(variant_ident.clone());
+fn constructors(enom: &Ident, variant: &Variant) -> Orm<TokenStream2> {
+    let Variant { ident, fields, .. } = variant;
+    let ident = Orm::from_ident(ident.clone());
     if fields.is_empty() {
-        constructor_empty(ident, &variant_ident)
+        constructor_empty(enom, &ident)
     } else {
-        constructor_full(ident, &variant_ident, fields)
+        constructor_full(enom, &ident, fields)
     }
 }
 
-fn constructor_empty(ident: &Ident, variant_ident: &Orm<Ident>) -> Orm<TokenStream2> {
-    let (var_own, var_ref, var_mut) = variant_ident.as_ref().into_tuple();
+fn constructor_empty(enom: &Ident, ident: &Orm<Ident>) -> Orm<TokenStream2> {
+    let (ident_own, ident_ref, ident_mut) = ident.as_ref().into_tuple();
     Orm::new(
-        quote! { #ident::#var_own },
-        quote! { #ident::#var_ref },
-        quote! { #ident::#var_mut },
+        quote! { #enom::#ident_own },
+        quote! { #enom::#ident_ref },
+        quote! { #enom::#ident_mut },
     )
 }
 
-fn constructor_full(ident: &Ident, variant: &Orm<Ident>, fields: &Fields) -> Orm<TokenStream2> {
+fn constructor_full(enom: &Ident, ident: &Orm<Ident>, fields: &Fields) -> Orm<TokenStream2> {
     let (setters_own, setters_ref, setters_mut) = setters(fields).into_tuple();
-    let (variant_own, variant_ref, variant_mut) = variant.as_ref().into_tuple();
+    let (ident_own, ident_ref, ident_mut) = ident.as_ref().into_tuple();
     Orm::new(
-        quote! { #ident::#variant_own { #(#setters_own)* } },
-        quote! { #ident::#variant_ref { #(#setters_ref)* } },
-        quote! { #ident::#variant_mut { #(#setters_mut)* } },
+        quote! { #enom::#ident_own { #(#setters_own)* } },
+        quote! { #enom::#ident_ref { #(#setters_ref)* } },
+        quote! { #enom::#ident_mut { #(#setters_mut)* } },
     )
 }
 
@@ -258,56 +231,69 @@ fn setter(field: &Field, i: usize) -> Orm<TokenStream2> {
 }
 
 fn struct_definitions(variant: &Variant) -> TokenStream2 {
-    let Variant {
-        ident: variant_ident,
-        fields,
-        ..
-    } = variant;
+    let Variant { ident, fields, .. } = variant;
 
-    let variant_ident = Orm::from_ident(variant_ident.clone());
-    let (variant_own, variant_ref, variant_mut) = variant_ident.into_tuple();
+    let ident = Orm::from_ident(ident.clone());
+    let (ident_own, ident_ref, ident_mut) = ident.into_tuple();
 
-    let fields_orm: Orm<Vec<_>> = fields.iter().map(variant_field_orm).collect();
+    let fields_orm: Orm<Vec<_>> = fields.iter().map(field_orm).collect();
     let (fields_own, fields_ref, fields_mut) = fields_orm.into_tuple();
 
     if fields.is_empty() {
         quote! {
-            pub struct #variant_own;
-            pub struct #variant_ref;
-            pub struct #variant_mut;
+            pub struct #ident_own;
+            pub struct #ident_ref;
+            pub struct #ident_mut;
         }
     } else if is_tuple(fields) {
         quote! {
-            pub struct #variant_own    (#(#fields_own),*);
-            pub struct #variant_ref<'a>(#(#fields_ref),*);
-            pub struct #variant_mut<'a>(#(#fields_mut),*);
+            pub struct #ident_own    (#(#fields_own),*);
+            pub struct #ident_ref<'a>(#(#fields_ref),*);
+            pub struct #ident_mut<'a>(#(#fields_mut),*);
         }
     } else {
         quote! {
-            pub struct #variant_own     { #(#fields_own),* }
-            pub struct #variant_ref<'a> { #(#fields_ref),* }
-            pub struct #variant_mut<'a> { #(#fields_mut),* }
+            pub struct #ident_own     { #(#fields_own),* }
+            pub struct #ident_ref<'a> { #(#fields_ref),* }
+            pub struct #ident_mut<'a> { #(#fields_mut),* }
         }
     }
 }
 
-fn is_tuple(fields: &Fields) -> bool {
-    fields.iter().next().unwrap().ident.is_none()
-}
-
-fn variant_field_orm(field: &Field) -> Orm<TokenStream2> {
+fn field_orm(field: &Field) -> Orm<TokenStream2> {
     let Field { ident, ty, .. } = field;
     match ident {
-        Some(ident) => (
+        Some(ident) => Orm::new(
             quote! { pub #ident:      #ty },
             quote! { pub #ident: &    #ty },
             quote! { pub #ident: &mut #ty },
         ),
-        None => (
+        None => Orm::new(
             quote! { pub      #ty },
             quote! { pub &    #ty },
             quote! { pub &mut #ty },
         ),
     }
-    .into()
+}
+
+fn to_snake_case(s: &str) -> String {
+    let mut chars = s.chars();
+    let mut out = String::new();
+    out.extend(chars.next().iter().flat_map(|c| c.to_lowercase()));
+    for c in chars {
+        if c.is_lowercase() {
+            out.push(c);
+        } else {
+            out.extend(std::iter::once('_').chain(c.to_lowercase()))
+        }
+    }
+    out
+}
+
+fn is_tuple(fields: &Fields) -> bool {
+    fields
+        .iter()
+        .next()
+        .and_then(|field| field.ident.as_ref())
+        .is_some()
 }
