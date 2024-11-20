@@ -226,13 +226,7 @@ fn constructor_empty(ident: &Ident, variant_ident: &Orm<Ident>) -> Orm<TokenStre
 }
 
 fn constructor_full(ident: &Ident, variant: &Orm<Ident>, fields: &Fields) -> Orm<TokenStream2> {
-    let setters: Orm<Vec<_>> = fields
-        .iter()
-        .enumerate()
-        .map(|(i, field)| field_setter(field, i))
-        .collect();
-
-    let (setters_own, setters_ref, setters_mut) = setters.into_tuple();
+    let (setters_own, setters_ref, setters_mut) = setters(fields).into_tuple();
     let (variant_own, variant_ref, variant_mut) = variant.as_ref().into_tuple();
     Orm::new(
         quote! { #ident::#variant_own { #(#setters_own)* } },
@@ -241,7 +235,15 @@ fn constructor_full(ident: &Ident, variant: &Orm<Ident>, fields: &Fields) -> Orm
     )
 }
 
-fn field_setter(field: &Field, i: usize) -> Orm<TokenStream2> {
+fn setters(fields: &Fields) -> Orm<Vec<TokenStream2>> {
+    fields
+        .iter()
+        .enumerate()
+        .map(|(i, field)| setter(field, i))
+        .collect()
+}
+
+fn setter(field: &Field, i: usize) -> Orm<TokenStream2> {
     let field_ident = IdentOrIndex::from_ident_index(&field.ident, i);
     Orm::new(
         quote! {
