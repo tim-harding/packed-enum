@@ -36,30 +36,36 @@ fn packable_inner(input: DeriveInput) -> Result<TokenStream2, PackedError> {
     };
 
     #[allow(clippy::type_complexity)]
-    let (construct, (strukts, (arm_ignore, (arm_variables, variant_idents)))): (
+    let (construct, (arm_ignore, (arm_variables, variant_idents))): (
         Orm<Vec<_>>,
-        (Vec<_>, (Vec<_>, (Vec<_>, Vec<_>))),
+        (Vec<_>, (Vec<_>, Vec<_>)),
     ) = e
         .variants
         .iter()
         .map(|variant| {
             let construct = constructors(&ident, variant);
-            let strukts = struct_definitions(variant);
             let arm_ignore = arm_ignore(variant);
             let arm_variables = arm_variables(variant);
-            (
-                construct,
-                (strukts, (arm_ignore, (arm_variables, &variant.ident))),
-            )
+            (construct, (arm_ignore, (arm_variables, &variant.ident)))
         })
         .collect();
 
+    let variant_defs: Orm<Vec<_>> = e.variants.iter().map(variant_defs).collect();
+    let (variant_own, variant_ref, variant_mut) = variant_defs.into_tuple();
     let (construct_own, construct_ref, construct_mut) = construct.into_tuple();
     let strukt_module = format_ident!("{}_structs", to_snake_case(&ident.to_string()));
 
-    Ok(quote! {
+    let out = quote! {
         mod #strukt_module {
-            #(#strukts)*
+            #(#variant_own)*
+
+            pub enum Ref {
+                #(#variant_ref),*
+            }
+
+            pub enum Mut {
+                #(#variant_mut),*
+            }
 
             #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
             pub enum Variant {
@@ -147,7 +153,14 @@ fn packable_inner(input: DeriveInput) -> Result<TokenStream2, PackedError> {
                 };
             }
         }
-    })
+    };
+
+    // Debugging utility. Sometimes `cargo expand` doesn't actually show the macro output if we don't
+    // produce a valid token sequence. To show only the macro expansion, use
+    // cargo build 2>/dev/null | bat --language rust
+    println!("{}", out.to_string());
+
+    Ok(out)
 }
 
 fn arm_ignore(variant: &Variant) -> VariantKind {
@@ -227,33 +240,30 @@ fn setter(field: &Field, i: usize) -> Orm<TokenStream2> {
     )
 }
 
-fn struct_definitions(variant: &Variant) -> TokenStream2 {
+fn variant_defs(variant: &Variant) -> Orm<TokenStream2> {
     let Variant { ident, fields, .. } = variant;
-
-    let ident = Orm::from_ident(ident);
-    let (ident_own, ident_ref, ident_mut) = ident.into_tuple();
 
     let fields_orm: Orm<Vec<_>> = fields.iter().map(field_orm).collect();
     let (fields_own, fields_ref, fields_mut) = fields_orm.into_tuple();
 
     if fields.is_empty() {
-        quote! {
-            pub struct #ident_own;
-            pub struct #ident_ref;
-            pub struct #ident_mut;
-        }
+        Orm::new(
+            quote! { pub struct #ident; },
+            quote! { #ident },
+            quote! { #ident },
+        )
     } else if is_tuple(fields) {
-        quote! {
-            pub struct #ident_own    (#(#fields_own),*);
-            pub struct #ident_ref<'a>(#(#fields_ref),*);
-            pub struct #ident_mut<'a>(#(#fields_mut),*);
-        }
+        Orm::new(
+            quote! { pub struct #ident (#(#fields_own),*); },
+            quote! { #ident(#(#fields_ref),*) },
+            quote! { #ident(#(#fields_mut),*) },
+        )
     } else {
-        quote! {
-            pub struct #ident_own     { #(#fields_own),* }
-            pub struct #ident_ref<'a> { #(#fields_ref),* }
-            pub struct #ident_mut<'a> { #(#fields_mut),* }
-        }
+        Orm::new(
+            quote! { pub struct #ident { #(#fields_own),* } },
+            quote! { #ident { #(#fields_ref),* } },
+            quote! { #ident { #(#fields_mut),* } },
+        )
     }
 }
 
