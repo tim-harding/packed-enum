@@ -1,6 +1,9 @@
 mod orm;
 use orm::Orm;
 
+mod packed_error;
+use packed_error::PackedError;
+
 use proc_macro::TokenStream;
 use proc_macro2::{Ident, TokenStream as TokenStream2};
 use quote::{format_ident, quote, quote_spanned, ToTokens};
@@ -245,18 +248,6 @@ impl<'a> ToTokens for IdentOrIndex<'a> {
             IdentOrIndex::Ident(ident) => ident.to_tokens(tokens),
             IdentOrIndex::Index(i) => i.to_tokens(tokens),
         }
-    }
-}
-
-#[derive(Debug, Clone)]
-enum PackedError {
-    NotAnEnum,
-    Syn(syn::Error),
-}
-
-impl From<syn::Error> for PackedError {
-    fn from(value: syn::Error) -> Self {
-        Self::Syn(value)
     }
 }
 
