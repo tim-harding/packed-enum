@@ -35,34 +35,24 @@ fn packable_inner(input: DeriveInput) -> Result<TokenStream2, PackedError> {
         return Err(PackedError::NotAnEnum);
     };
 
-    let module = format_ident!("{}_types", to_snake_case(&ident.to_string()));
-
-    let (arm_ignore, (arm_variables, variant_idents)): (Vec<_>, (Vec<_>, Vec<_>)) = e
-        .variants
-        .iter()
-        .map(|variant| {
-            let arm_ignore = arm_ignore(variant);
-            let arm_variables = arm_variables(variant);
-            (arm_ignore, (arm_variables, &variant.ident))
-        })
-        .collect();
-
-    let construct = read_all(&ident, &module, &e);
-    let variant_defs: Orm<Vec<_>> = e.variants.iter().map(variant_defs).collect();
-    let (variant_own, variant_ref, variant_mut) = variant_defs.into_tuple();
-    let (construct_own, construct_ref, construct_mut) = construct.into_tuple();
     let variant_count = e.variants.len();
+    let module = format_ident!("{}_types", to_snake_case(&ident.to_string()));
+    let variant_idents = variant_idents(&e);
+    let arm_ignore = arm_ignore_all(&e);
+    let arm_variables = arm_variables_all(&e);
+    let (read_own, read_ref, read_mut) = read_all(&ident, &module, &e).into_tuple();
+    let (defs_own, defs_ref, defs_mut) = defs_all(&e).into_tuple();
 
     let out = quote! {
         mod #module {
-            #(#variant_own)*
+            #(#defs_own)*
 
             pub enum Ref {
-                #(#variant_ref),*
+                #(#defs_ref),*
             }
 
             pub enum Mut {
-                #(#variant_mut),*
+                #(#defs_mut),*
             }
 
             #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
@@ -109,7 +99,7 @@ fn packable_inner(input: DeriveInput) -> Result<TokenStream2, PackedError> {
                     #module::Variant::#variant_idents => {
                         let ptr = data.cast::<#module::#variant_idents>();
                         let construct_source = unsafe { ptr.as_ref().unwrap_unchecked() };
-                        #construct_own
+                        #read_own
                     },
                     )*
                 }
@@ -121,7 +111,7 @@ fn packable_inner(input: DeriveInput) -> Result<TokenStream2, PackedError> {
                     #module::Variant::#variant_idents => {
                         let ptr = data.cast::<#module::#variant_idents>();
                         let construct_source = unsafe { ptr.as_ref().unwrap_unchecked() };
-                        #construct_ref
+                        #read_ref
                     },
                     )*
                 }
@@ -133,7 +123,7 @@ fn packable_inner(input: DeriveInput) -> Result<TokenStream2, PackedError> {
                     #module::Variant::#variant_idents => {
                         let ptr = data.cast::<#module::#variant_idents>();
                         let construct_source = unsafe { ptr.as_ref().unwrap_unchecked() };
-                        #construct_mut
+                        #read_mut
                     },
                     )*
                 }
@@ -145,7 +135,7 @@ fn packable_inner(input: DeriveInput) -> Result<TokenStream2, PackedError> {
                 let strukt = match construct_source {
                     #(
                     #ident::#variant_idents #arm_variables => {
-                        let strukt = #construct_own;
+                        let strukt = #read_own;
                         let src = ::std::ptr::from_ref(&strukt).cast();
                         let count = ::std::mem::size_of_val(&strukt);
                         unsafe {
@@ -166,12 +156,24 @@ fn packable_inner(input: DeriveInput) -> Result<TokenStream2, PackedError> {
     Ok(out)
 }
 
+fn variant_idents(e: &DataEnum) -> Vec<&Ident> {
+    e.variants.iter().map(|variant| &variant.ident).collect()
+}
+
+fn arm_ignore_all(e: &DataEnum) -> Vec<VariantKind> {
+    e.variants.iter().map(arm_ignore).collect()
+}
+
 fn arm_ignore(variant: &Variant) -> VariantKind {
     match variant.fields.iter().next() {
         Some(Field { ident: Some(_), .. }) => VariantKind::Struct,
         Some(Field { ident: None, .. }) => VariantKind::Tuple(variant.fields.len()),
         None => VariantKind::Empty,
     }
+}
+
+fn arm_variables_all(e: &DataEnum) -> Vec<TokenStream2> {
+    e.variants.iter().map(arm_variables).collect()
 }
 
 fn arm_variables(variant: &Variant) -> TokenStream2 {
@@ -244,6 +246,10 @@ fn field_read(module: &Ident, variant: &Ident, field: &Field, i: usize) -> Orm<T
         quote! { unsafe { #offset.as_ref_unchecked() } },
         quote! { unsafe { #offset.as_mut_unchecked() } },
     )
+}
+
+fn defs_all(e: &DataEnum) -> Orm<Vec<TokenStream2>> {
+    e.variants.iter().map(variant_defs).collect()
 }
 
 fn variant_defs(variant: &Variant) -> Orm<TokenStream2> {
