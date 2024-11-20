@@ -284,14 +284,14 @@ fn field_orm(field: &Field) -> Orm<TokenStream2> {
     let Field { ident, ty, .. } = field;
     match ident {
         Some(ident) => Orm::new(
-            quote! { pub #ident:      #ty },
-            quote! { pub #ident: &    #ty },
-            quote! { pub #ident: &mut #ty },
+            quote! { #ident:      #ty },
+            quote! { #ident: &    #ty },
+            quote! { #ident: &mut #ty },
         ),
         None => Orm::new(
-            quote! { pub      #ty },
-            quote! { pub &    #ty },
-            quote! { pub &mut #ty },
+            quote! {      #ty },
+            quote! { &    #ty },
+            quote! { &mut #ty },
         ),
     }
 }
