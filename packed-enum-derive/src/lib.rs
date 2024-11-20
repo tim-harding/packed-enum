@@ -7,10 +7,13 @@ use packed_error::PackedError;
 mod variant_kind;
 use variant_kind::VariantKind;
 
+mod ident_or_index;
+use ident_or_index::IdentOrIndex;
+
 use proc_macro::TokenStream;
 use proc_macro2::{Ident, TokenStream as TokenStream2};
-use quote::{format_ident, quote, quote_spanned, ToTokens};
-use syn::{parse_macro_input, Data, DataEnum, DeriveInput, Field, Fields, Index, Variant};
+use quote::{format_ident, quote, quote_spanned};
+use syn::{parse_macro_input, Data, DataEnum, DeriveInput, Field, Fields, Variant};
 
 #[proc_macro_derive(Packable)]
 pub fn packed(input: TokenStream) -> TokenStream {
@@ -210,29 +213,6 @@ fn to_snake_case(s: &str) -> String {
         }
     }
     out
-}
-
-enum IdentOrIndex<'a> {
-    Ident(&'a Ident),
-    Index(Index),
-}
-
-impl<'a> IdentOrIndex<'a> {
-    pub fn from_ident_index(ident: &'a Option<Ident>, index: usize) -> Self {
-        match ident {
-            Some(ident) => Self::Ident(ident),
-            None => Self::Index(Index::from(index)),
-        }
-    }
-}
-
-impl<'a> ToTokens for IdentOrIndex<'a> {
-    fn to_tokens(&self, tokens: &mut TokenStream2) {
-        match self {
-            IdentOrIndex::Ident(ident) => ident.to_tokens(tokens),
-            IdentOrIndex::Index(i) => i.to_tokens(tokens),
-        }
-    }
 }
 
 fn ident_ref(ident: &Ident) -> Ident {
