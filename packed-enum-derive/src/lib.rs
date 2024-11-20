@@ -95,37 +95,19 @@ fn packable_inner(input: DeriveInput) -> Result<TokenStream2, PackedError> {
 
             fn read(variant: Self::Variant, data: *const u8) -> Self {
                 match variant {
-                    #(
-                    #module::Variant::#variant_idents => {
-                        let ptr = data.cast::<#module::#variant_idents>();
-                        let construct_source = unsafe { ptr.as_ref().unwrap_unchecked() };
-                        #read_own
-                    },
-                    )*
+                    #( #module::Variant::#variant_idents => { #read_own } ),*
                 }
             }
 
             fn read_ref<'a>(variant: Self::Variant, data: *const u8) -> Self::Ref<'a> {
                 match variant {
-                    #(
-                    #module::Variant::#variant_idents => {
-                        let ptr = data.cast::<#module::#variant_idents>();
-                        let construct_source = unsafe { ptr.as_ref().unwrap_unchecked() };
-                        #read_ref
-                    },
-                    )*
+                    #( #module::Variant::#variant_idents => { #read_ref } ),*
                 }
             }
 
             fn read_mut<'a>(variant: Self::Variant, data: *const u8) -> Self::Mut<'a> {
                 match variant {
-                    #(
-                    #module::Variant::#variant_idents => {
-                        let ptr = data.cast::<#module::#variant_idents>();
-                        let construct_source = unsafe { ptr.as_ref().unwrap_unchecked() };
-                        #read_mut
-                    },
-                    )*
+                    #( #module::Variant::#variant_idents => { #read_mut } ),*
                 }
             }
 
@@ -240,8 +222,11 @@ fn field_reads(module: &Ident, variant: &Ident, fields: &Fields) -> Orm<Vec<Toke
 
 fn field_read(module: &Ident, variant: &Ident, field: &Field, i: usize) -> Orm<TokenStream2> {
     let field_ident = IdentOrIndex::from_ident_index(&field.ident, i);
-    let offset =
-        quote! { ptr.byte_offset(::std::mem::offset_of!(#module::#variant, #field_ident)) };
+    let offset = quote! {
+        data.byte_offset(
+            ::std::mem::offset_of!(#module::#variant, #field_ident),
+        ).cast()
+    };
     Orm::new(
         quote! { #field_ident: unsafe { #offset.read()             } },
         quote! { #field_ident: unsafe { #offset.as_ref_unchecked() } },
