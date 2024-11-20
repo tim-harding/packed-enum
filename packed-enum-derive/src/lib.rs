@@ -224,7 +224,7 @@ fn field_read(module: &Ident, variant: &Ident, field: &Field, i: usize) -> Orm<T
     let field_ident = IdentOrIndex::from_ident_index(&field.ident, i);
     let offset = quote! {
         data.byte_offset(
-            ::std::mem::offset_of!(#module::#variant, #field_ident),
+            ::std::mem::offset_of!(#module::#variant, #field_ident) as isize,
         ).cast()
     };
     Orm::new(
