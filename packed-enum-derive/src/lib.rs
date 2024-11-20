@@ -94,7 +94,7 @@ fn packable_inner(input: DeriveInput) -> Result<TokenStream2, PackedError> {
             }
 
             fn read(variant: Self::Variant, data: *const u8) -> Self {
-                match self.variant() {
+                match variant {
                     #(
                     #module::Variant::#variant_idents => {
                         let ptr = data.cast::<#module::#variant_idents>();
@@ -106,7 +106,7 @@ fn packable_inner(input: DeriveInput) -> Result<TokenStream2, PackedError> {
             }
 
             fn read_ref<'a>(variant: Self::Variant, data: *const u8) -> Self::Ref<'a> {
-                match self.variant() {
+                match variant {
                     #(
                     #module::Variant::#variant_idents => {
                         let ptr = data.cast::<#module::#variant_idents>();
@@ -118,7 +118,7 @@ fn packable_inner(input: DeriveInput) -> Result<TokenStream2, PackedError> {
             }
 
             fn read_mut<'a>(variant: Self::Variant, data: *const u8) -> Self::Mut<'a> {
-                match self.variant() {
+                match variant {
                     #(
                     #module::Variant::#variant_idents => {
                         let ptr = data.cast::<#module::#variant_idents>();
