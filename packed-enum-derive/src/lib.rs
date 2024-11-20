@@ -181,7 +181,7 @@ fn field_variables(fields: &Fields) -> Vec<Ident> {
 
 fn constructors(enom: &Ident, variant: &Variant) -> Orm<TokenStream2> {
     let Variant { ident, fields, .. } = variant;
-    let ident = Orm::from_ident(ident.clone());
+    let ident = Orm::from_ident(ident);
     if fields.is_empty() {
         constructor_empty(enom, &ident)
     } else {
@@ -233,7 +233,7 @@ fn setter(field: &Field, i: usize) -> Orm<TokenStream2> {
 fn struct_definitions(variant: &Variant) -> TokenStream2 {
     let Variant { ident, fields, .. } = variant;
 
-    let ident = Orm::from_ident(ident.clone());
+    let ident = Orm::from_ident(ident);
     let (ident_own, ident_ref, ident_mut) = ident.into_tuple();
 
     let fields_orm: Orm<Vec<_>> = fields.iter().map(field_orm).collect();

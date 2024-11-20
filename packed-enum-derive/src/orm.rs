@@ -9,11 +9,11 @@ pub struct Orm<T> {
 }
 
 impl Orm<Ident> {
-    pub fn from_ident(ident: Ident) -> Self {
+    pub fn from_ident(ident: &Ident) -> Self {
         Self {
+            o: format_ident!("{}Own", ident),
             r: format_ident!("{}Ref", ident),
             m: format_ident!("{}Mut", ident),
-            o: ident,
         }
     }
 }
