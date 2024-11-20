@@ -215,14 +215,6 @@ fn to_snake_case(s: &str) -> String {
     out
 }
 
-fn ident_ref(ident: &Ident) -> Ident {
-    format_ident!("{}Ref", ident)
-}
-
-fn ident_mut(ident: &Ident) -> Ident {
-    format_ident!("{}RefMut", ident)
-}
-
 fn constructors(ident: &Ident, e: &DataEnum) -> Orm<Vec<TokenStream2>> {
     e.variants
         .iter()
@@ -286,38 +278,47 @@ fn struct_definitions(e: &DataEnum) -> Vec<TokenStream2> {
         .iter()
         .map(|variant| {
             let Variant {
-                ident: variant_ident_own,
+                ident: variant_ident,
                 fields,
                 ..
             } = variant;
-            let variant_ident_ref = ident_ref(variant_ident_own);
-            let variant_ident_mut = ident_mut(variant_ident_own);
-
+            let variant_ident = Orm::from_ident(variant_ident.clone());
             if fields.is_empty() {
-                return quote! {
-                    pub struct #variant_ident_own;
-                };
-            }
-
-            let fields_orm: Orm<Vec<_>> = fields.iter().map(variant_field_orm).collect();
-            let (fields_own, fields_ref, fields_mut) = fields_orm.into_tuple();
-
-            let is_tuple = fields.iter().next().unwrap().ident.is_none();
-            if is_tuple {
-                quote! {
-                    pub struct #variant_ident_own    (#(#fields_own),*);
-                    pub struct #variant_ident_ref<'a>(#(#fields_ref),*);
-                    pub struct #variant_ident_mut<'a>(#(#fields_mut),*);
-                }
+                struct_definition_empty(variant_ident)
             } else {
-                quote! {
-                    pub struct #variant_ident_own     { #(#fields_own),* }
-                    pub struct #variant_ident_ref<'a> { #(#fields_ref),* }
-                    pub struct #variant_ident_mut<'a> { #(#fields_mut),* }
-                }
+                struct_definition_full(variant_ident, fields)
             }
         })
         .collect()
+}
+
+fn struct_definition_empty(variant_ident: Orm<Ident>) -> TokenStream2 {
+    let (variant_own, variant_ref, variant_mut) = variant_ident.into_tuple();
+    quote! {
+        pub struct #variant_own;
+        pub struct #variant_ref;
+        pub struct #variant_mut;
+    }
+}
+
+fn struct_definition_full(variant_ident: Orm<Ident>, fields: &Fields) -> TokenStream2 {
+    let fields_orm: Orm<Vec<_>> = fields.iter().map(variant_field_orm).collect();
+    let (fields_own, fields_ref, fields_mut) = fields_orm.into_tuple();
+    let (variant_own, variant_ref, variant_mut) = variant_ident.into_tuple();
+    let is_tuple = fields.iter().next().unwrap().ident.is_none();
+    if is_tuple {
+        quote! {
+            pub struct #variant_own    (#(#fields_own),*);
+            pub struct #variant_ref<'a>(#(#fields_ref),*);
+            pub struct #variant_mut<'a>(#(#fields_mut),*);
+        }
+    } else {
+        quote! {
+            pub struct #variant_own     { #(#fields_own),* }
+            pub struct #variant_ref<'a> { #(#fields_ref),* }
+            pub struct #variant_mut<'a> { #(#fields_mut),* }
+        }
+    }
 }
 
 fn variant_field_orm(field: &Field) -> Orm<TokenStream2> {
