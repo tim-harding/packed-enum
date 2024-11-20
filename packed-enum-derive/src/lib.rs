@@ -35,6 +35,8 @@ fn packable_inner(input: DeriveInput) -> Result<TokenStream2, PackedError> {
         return Err(PackedError::NotAnEnum);
     };
 
+    let module = format_ident!("{}_types", to_snake_case(&ident.to_string()));
+
     #[allow(clippy::type_complexity)]
     let (construct, (arm_ignore, (arm_variables, variant_idents))): (
         Orm<Vec<_>>,
@@ -43,17 +45,16 @@ fn packable_inner(input: DeriveInput) -> Result<TokenStream2, PackedError> {
         .variants
         .iter()
         .map(|variant| {
-            let construct = constructors(&ident, variant);
+            let read = read(&ident, variant, &module);
             let arm_ignore = arm_ignore(variant);
             let arm_variables = arm_variables(variant);
-            (construct, (arm_ignore, (arm_variables, &variant.ident)))
+            (read, (arm_ignore, (arm_variables, &variant.ident)))
         })
         .collect();
 
     let variant_defs: Orm<Vec<_>> = e.variants.iter().map(variant_defs).collect();
     let (variant_own, variant_ref, variant_mut) = variant_defs.into_tuple();
     let (construct_own, construct_ref, construct_mut) = construct.into_tuple();
-    let module = format_ident!("{}_types", to_snake_case(&ident.to_string()));
     let variant_count = e.variants.len();
 
     let out = quote! {
@@ -164,7 +165,7 @@ fn packable_inner(input: DeriveInput) -> Result<TokenStream2, PackedError> {
     // Debugging utility. Sometimes `cargo expand` doesn't actually show the macro output if we don't
     // produce a valid token sequence. To show only the macro expansion, use
     // cargo build 2>/dev/null | bat --language rust
-    println!("{}", out.to_string());
+    println!("{}", out);
 
     Ok(out)
 }
@@ -198,16 +199,16 @@ fn field_variables(fields: &Fields) -> Vec<Ident> {
         .collect()
 }
 
-fn constructors(enom: &Ident, variant: &Variant) -> Orm<TokenStream2> {
+fn read(enom: &Ident, variant: &Variant, module: &Ident) -> Orm<TokenStream2> {
     let Variant { ident, fields, .. } = variant;
     if fields.is_empty() {
-        constructor_empty(enom, ident)
+        read_empty(enom, ident)
     } else {
-        constructor_full(enom, ident, fields)
+        read_full(enom, ident, fields, module)
     }
 }
 
-fn constructor_empty(enom: &Ident, variant: &Ident) -> Orm<TokenStream2> {
+fn read_empty(enom: &Ident, variant: &Ident) -> Orm<TokenStream2> {
     Orm::new(
         quote! { #enom::#variant },
         quote! { #enom::#variant },
@@ -215,34 +216,30 @@ fn constructor_empty(enom: &Ident, variant: &Ident) -> Orm<TokenStream2> {
     )
 }
 
-fn constructor_full(enom: &Ident, variant: &Ident, fields: &Fields) -> Orm<TokenStream2> {
-    let (setters_own, setters_ref, setters_mut) = setters(fields).into_tuple();
+fn read_full(enom: &Ident, variant: &Ident, fields: &Fields, module: &Ident) -> Orm<TokenStream2> {
+    let (read_own, read_ref, read_mut) = field_reads(fields, module, variant).into_tuple();
     Orm::new(
-        quote! { #enom::#variant { #(#setters_own)* } },
-        quote! { #enom::#variant { #(#setters_ref)* } },
-        quote! { #enom::#variant { #(#setters_mut)* } },
+        quote! { #enom::#variant { #(#read_own)* } },
+        quote! { #enom::#variant { #(#read_ref)* } },
+        quote! { #enom::#variant { #(#read_mut)* } },
     )
 }
 
-fn setters(fields: &Fields) -> Orm<Vec<TokenStream2>> {
+fn field_reads(fields: &Fields, module: &Ident, variant: &Ident) -> Orm<Vec<TokenStream2>> {
     fields
         .iter()
         .enumerate()
-        .map(|(i, field)| setter(field, i))
+        .map(|(i, field)| field_read(field, i, module, variant))
         .collect()
 }
 
-fn setter(field: &Field, i: usize) -> Orm<TokenStream2> {
+fn field_read(field: &Field, i: usize, module: &Ident, variant: &Ident) -> Orm<TokenStream2> {
     let field_ident = IdentOrIndex::from_ident_index(&field.ident, i);
+    let offset = quote! { ptr.byte_offset(offset_of!(#module::#variant, #field_ident)) };
     Orm::new(
-        quote! {
-            #field_ident: {
-                let ptr = ::std::ptr::from_ref(&construct_source.#field_ident);
-                unsafe { ptr.read() }
-            },
-        },
-        quote! { #field_ident: &    construct_source.#field_ident, },
-        quote! { #field_ident: &mut construct_source.#field_ident, },
+        quote! { unsafe { #offset.read()             } },
+        quote! { unsafe { #offset.as_ref_unchecked() } },
+        quote! { unsafe { #offset.as_mut_unchecked() } },
     )
 }
 
