@@ -1,7 +1,7 @@
 use proc_macro::TokenStream;
 use proc_macro2::{Ident, TokenStream as TokenStream2};
 use quote::{format_ident, quote, quote_spanned, ToTokens};
-use syn::{parse_macro_input, Data, DataEnum, DeriveInput, Field, Index, Variant};
+use syn::{parse_macro_input, Data, DataEnum, DeriveInput, Field, Fields, Index, Variant};
 
 #[proc_macro_derive(Packable)]
 pub fn packed(input: TokenStream) -> TokenStream {
@@ -37,55 +37,8 @@ fn packed_inner(input: DeriveInput) -> Result<TokenStream2, PackedError> {
 
     let strukts = struct_definitions(&e);
 
-    let (construct_own, (construct_ref, construct_mut)): (Vec<_>, (Vec<_>, Vec<_>)) = e
-        .variants
-        .iter()
-        .map(|variant| {
-            let Variant {
-                ident: variant_ident_own,
-                fields,
-                ..
-            } = variant;
-            let variant_ident_ref = ident_ref(variant_ident_own);
-            let variant_ident_mut = ident_mut(variant_ident_own);
-
-            if fields.is_empty() {
-                let a = quote! { #ident::#variant_ident_own };
-                let b = quote! { #ident::#variant_ident_ref };
-                let c = quote! { #ident::#variant_ident_mut };
-                return (a, (b, c));
-            }
-
-            let (setters_own, (setters_ref, setters_mut)): (Vec<_>, (Vec<_>, Vec<_>)) = fields
-                .iter()
-                .enumerate()
-                .map(|(i, field)| {
-                    let Field {
-                        ident: field_ident, ..
-                    } = field;
-                    let field_ident = IdentOrIndex::from_ident_index(field_ident, i);
-                    let field_own = quote! {
-                        #field_ident: {
-                            let ptr = ::std::ptr::from_ref(&construct_source.#field_ident);
-                            unsafe { ptr.read() }
-                        },
-                    };
-                    let field_ref = quote! {
-                        #field_ident: &construct_source.#field_ident,
-                    };
-                    let field_mut = quote! {
-                        #field_ident: &mut construct_source.#field_ident,
-                    };
-                    (field_own, (field_ref, field_mut))
-                })
-                .unzip();
-
-            let construct_own = quote! { #ident::#variant_ident_own { #(#setters_own)* } };
-            let construct_ref = quote! { #ident::#variant_ident_own { #(#setters_ref)* } };
-            let construct_mut = quote! { #ident::#variant_ident_own { #(#setters_mut)* } };
-            (construct_own, (construct_ref, construct_mut))
-        })
-        .unzip();
+    let construct = constructors(&ident, &e);
+    let (construct_own, construct_ref, construct_mut) = construct.into_tuple();
 
     let field_variable_idents: Vec<Vec<_>> = e
         .variants
@@ -367,62 +320,129 @@ fn ident_mut(ident: &Ident) -> Ident {
     format_ident!("{}RefMut", ident)
 }
 
-struct OwnRefMut {
-    o: TokenStream2,
-    r: TokenStream2,
-    m: TokenStream2,
+impl Orm<Ident> {
+    pub fn from_ident(ident: Ident) -> Self {
+        Self {
+            r: format_ident!("{}Ref", ident),
+            m: format_ident!("{}Mut", ident),
+            o: ident,
+        }
+    }
 }
 
-impl OwnRefMut {
-    pub const fn new(o: TokenStream2, r: TokenStream2, m: TokenStream2) -> Self {
+struct Orm<T> {
+    o: T,
+    r: T,
+    m: T,
+}
+
+impl<T> Orm<T> {
+    pub const fn new(o: T, r: T, m: T) -> Self {
         Self { o, r, m }
     }
 
-    pub fn into_tuple(self) -> (TokenStream2, TokenStream2, TokenStream2) {
+    pub fn as_ref(&self) -> Orm<&T> {
+        Orm {
+            o: &self.o,
+            r: &self.r,
+            m: &self.m,
+        }
+    }
+
+    pub fn as_mut(&mut self) -> Orm<&mut T> {
+        Orm {
+            o: &mut self.o,
+            r: &mut self.r,
+            m: &mut self.m,
+        }
+    }
+
+    pub fn into_tuple(self) -> (T, T, T) {
         let Self { o, r, m } = self;
         (o, r, m)
     }
 
-    pub fn into_tuple_nest(self) -> (TokenStream2, (TokenStream2, TokenStream2)) {
+    pub fn into_tuple_nest(self) -> (T, (T, T)) {
         let Self { o, r, m } = self;
         (o, (r, m))
     }
 }
 
-impl From<(TokenStream2, TokenStream2, TokenStream2)> for OwnRefMut {
-    fn from((a, b, c): (TokenStream2, TokenStream2, TokenStream2)) -> Self {
+impl<T> From<(T, T, T)> for Orm<T> {
+    fn from((a, b, c): (T, T, T)) -> Self {
         Self::new(a, b, c)
     }
 }
 
-impl From<OwnRefMut> for (TokenStream2, TokenStream2, TokenStream2) {
-    fn from(OwnRefMut { o, r, m }: OwnRefMut) -> Self {
+impl<T> From<Orm<T>> for (T, T, T) {
+    fn from(Orm { o, r, m }: Orm<T>) -> Self {
         (o, r, m)
     }
 }
 
-struct OwnRefMutVec {
-    o: Vec<TokenStream2>,
-    r: Vec<TokenStream2>,
-    m: Vec<TokenStream2>,
-}
-
-impl OwnRefMutVec {
-    pub const fn new(o: Vec<TokenStream2>, r: Vec<TokenStream2>, m: Vec<TokenStream2>) -> Self {
+impl<T> FromIterator<Orm<T>> for Orm<Vec<T>> {
+    fn from_iter<I: IntoIterator<Item = Orm<T>>>(iter: I) -> Self {
+        let (o, (r, m)) = iter.into_iter().map(Orm::into_tuple_nest).unzip();
         Self { o, r, m }
-    }
-
-    pub fn into_tuple(self) -> (Vec<TokenStream2>, Vec<TokenStream2>, Vec<TokenStream2>) {
-        let Self { o, r, m } = self;
-        (o, r, m)
     }
 }
 
-impl FromIterator<OwnRefMut> for OwnRefMutVec {
-    fn from_iter<T: IntoIterator<Item = OwnRefMut>>(iter: T) -> Self {
-        let (o, (r, m)) = iter.into_iter().map(OwnRefMut::into_tuple_nest).unzip();
-        Self { o, r, m }
-    }
+fn constructors(ident: &Ident, e: &DataEnum) -> Orm<Vec<TokenStream2>> {
+    e.variants
+        .iter()
+        .map(|variant| {
+            let Variant {
+                ident: variant_ident,
+                fields,
+                ..
+            } = variant;
+            let variant_ident = Orm::from_ident(variant_ident.clone());
+            if fields.is_empty() {
+                constructor_empty(ident, &variant_ident)
+            } else {
+                constructor_full(ident, &variant_ident, fields)
+            }
+        })
+        .collect()
+}
+
+fn constructor_empty(ident: &Ident, variant_ident: &Orm<Ident>) -> Orm<TokenStream2> {
+    let (var_own, var_ref, var_mut) = variant_ident.as_ref().into_tuple();
+    Orm::new(
+        quote! { #ident::#var_own },
+        quote! { #ident::#var_ref },
+        quote! { #ident::#var_mut },
+    )
+}
+
+fn constructor_full(ident: &Ident, variant: &Orm<Ident>, fields: &Fields) -> Orm<TokenStream2> {
+    let setters: Orm<Vec<_>> = fields
+        .iter()
+        .enumerate()
+        .map(|(i, field)| field_setter(field, i))
+        .collect();
+
+    let (setters_own, setters_ref, setters_mut) = setters.into_tuple();
+    let (variant_own, variant_ref, variant_mut) = variant.as_ref().into_tuple();
+    Orm::new(
+        quote! { #ident::#variant_own { #(#setters_own)* } },
+        quote! { #ident::#variant_ref { #(#setters_ref)* } },
+        quote! { #ident::#variant_mut { #(#setters_mut)* } },
+    )
+}
+
+fn field_setter(field: &Field, i: usize) -> Orm<TokenStream2> {
+    let field_ident = IdentOrIndex::from_ident_index(&field.ident, i);
+    Orm::new(
+        quote! {
+            #field_ident: {
+                let ptr = ::std::ptr::from_ref(&construct_source.#field_ident);
+                unsafe { ptr.read() }
+            },
+        },
+        quote! { #field_ident: &    construct_source.#field_ident, },
+        quote! { #field_ident: &mut construct_source.#field_ident, },
+    )
 }
 
 fn struct_definitions(e: &DataEnum) -> Vec<TokenStream2> {
@@ -443,7 +463,7 @@ fn struct_definitions(e: &DataEnum) -> Vec<TokenStream2> {
                 };
             }
 
-            let fields_orm: OwnRefMutVec = fields.iter().map(variant_field_orm).collect();
+            let fields_orm: Orm<Vec<_>> = fields.iter().map(variant_field_orm).collect();
             let (fields_own, fields_ref, fields_mut) = fields_orm.into_tuple();
 
             let is_tuple = fields.iter().next().unwrap().ident.is_none();
@@ -464,7 +484,7 @@ fn struct_definitions(e: &DataEnum) -> Vec<TokenStream2> {
         .collect()
 }
 
-fn variant_field_orm(field: &Field) -> OwnRefMut {
+fn variant_field_orm(field: &Field) -> Orm<TokenStream2> {
     let Field { ident, ty, .. } = field;
     match ident {
         Some(ident) => (
