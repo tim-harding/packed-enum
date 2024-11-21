@@ -76,6 +76,12 @@ fn packable_inner(input: DeriveInput) -> Result<TokenStream2, PackedError> {
                         )*
                     }
                 }
+
+                fn all() -> impl Iterator<Item = Self> {
+                    [
+                        #( Self::#variant_idents ),*
+                    ].into_iter()
+                }
             }
         }
 

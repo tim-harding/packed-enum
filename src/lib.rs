@@ -24,6 +24,7 @@ pub trait Packable {
 pub trait Variant {
     fn as_index(&self) -> usize;
     fn size_align(&self) -> (usize, usize);
+    fn all() -> impl Iterator<Item = Self>;
 }
 
 /*

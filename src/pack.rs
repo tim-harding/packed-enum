@@ -67,23 +67,38 @@ where
             let (size, align) = variant.size_align();
 
             let bucket = &mut self.buckets[variant.as_index()];
-            let bucket = unsafe { WrapVec::new(bucket, size, align) };
+            let mut bucket = unsafe { WrapVec::new(bucket, size, align) };
 
             let src = bucket.get(index);
+            bucket.set_len(index);
             unsafe { T::read(variant, src) }
         })
-    }
-}
-
-impl<T: Packable> Default for Pack<T> {
-    fn default() -> Self {
-        Self::new()
     }
 }
 
 impl<T: Packable> Drop for Pack<T> {
     fn drop(&mut self) {
         while self.pop().is_some() {}
+        for variant in <T::Variant as Variant>::all() {
+            let (size, align) = variant.size_align();
+            let bucket = &mut self.buckets[variant.as_index()];
+            let mut bucket = unsafe { WrapVec::new(bucket, size, align) };
+            bucket.dealloc();
+        }
+    }
+}
+
+macro_rules! bucket {
+    ($s:ident, $v:ident) => {{
+        let (size, align) = $v.size_align();
+        let bucket = &mut $s.buckets[$v.as_index()];
+        unsafe { WrapVec::new(bucket, size, align) }
+    }};
+}
+
+impl<T: Packable> Default for Pack<T> {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
