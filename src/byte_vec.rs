@@ -89,15 +89,6 @@ impl<'a> WrapVec<'a> {
         unsafe { self.ptr_mut().add(index * self.size) }
     }
 
-    /// Set the given index with the data behind the given pointer
-    ///
-    /// # Safety
-    ///
-    /// `data` must be a valid pointer with the same size and alignment
-    pub unsafe fn set(&mut self, index: usize, data: *const u8) {
-        data.copy_to(self.get_mut(index), self.size);
-    }
-
     /// Guarantee space for `count` additional elements
     pub fn maybe_grow_by(&mut self, count: usize) {
         self.maybe_grow_amortized(self.len() + count);
@@ -195,9 +186,9 @@ mod tests {
 
         for (i, item) in items.iter().enumerate() {
             v.set_len(i + 1);
-            unsafe {
-                v.set(i, from_ref(item).cast());
-            }
+            let src = from_ref(item).cast();
+            let dst = v.get_mut(i);
+            unsafe { dst.copy_from(src, SIZE) }
         }
 
         assert_eq!(v.len(), 5);
