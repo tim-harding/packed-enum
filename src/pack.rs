@@ -4,6 +4,14 @@ use crate::{
 };
 use std::marker::PhantomData;
 
+macro_rules! bucket {
+    ($s:ident, $v:ident) => {{
+        let (size, align) = $v.size_align();
+        let bucket = &mut $s.buckets[$v.as_index()];
+        unsafe { WrapVec::new(bucket, size, align) }
+    }};
+}
+
 pub struct Pack<T>
 where
     T: Packable,
@@ -46,10 +54,7 @@ where
 
     pub fn push(&mut self, element: T) {
         let variant = element.variant();
-        let (size, align) = variant.size_align();
-
-        let bucket = &mut self.buckets[variant.as_index()];
-        let mut bucket = unsafe { WrapVec::new(bucket, size, align) };
+        let mut bucket = bucket!(self, variant);
 
         let index = bucket.len();
         bucket.maybe_grow_by(1);
@@ -64,11 +69,7 @@ where
     pub fn pop(&mut self) -> Option<T> {
         self.entries.pop().map(|entry| {
             let Entry { variant, index } = entry;
-            let (size, align) = variant.size_align();
-
-            let bucket = &mut self.buckets[variant.as_index()];
-            let mut bucket = unsafe { WrapVec::new(bucket, size, align) };
-
+            let mut bucket = bucket!(self, variant);
             let src = bucket.get(index);
             bucket.set_len(index);
             unsafe { T::read(variant, src) }
@@ -80,20 +81,9 @@ impl<T: Packable> Drop for Pack<T> {
     fn drop(&mut self) {
         while self.pop().is_some() {}
         for variant in <T::Variant as Variant>::all() {
-            let (size, align) = variant.size_align();
-            let bucket = &mut self.buckets[variant.as_index()];
-            let mut bucket = unsafe { WrapVec::new(bucket, size, align) };
-            bucket.dealloc();
+            bucket!(self, variant).dealloc();
         }
     }
-}
-
-macro_rules! bucket {
-    ($s:ident, $v:ident) => {{
-        let (size, align) = $v.size_align();
-        let bucket = &mut $s.buckets[$v.as_index()];
-        unsafe { WrapVec::new(bucket, size, align) }
-    }};
 }
 
 impl<T: Packable> Default for Pack<T> {
