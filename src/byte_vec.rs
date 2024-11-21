@@ -33,10 +33,6 @@ impl<'a> WrapVec<'a> {
     /// byte vector previously. Multiple methods rely on this condition to
     /// uphold safety guarantees.
     pub unsafe fn new(bytes: &'a mut ByteVec, size: usize, align: usize) -> Self {
-        debug_assert!(bytes.len % size == 0);
-        debug_assert!(bytes.len % align == 0);
-        debug_assert!(bytes.cap % size == 0);
-        debug_assert!(bytes.cap % align == 0);
         Self { bytes, size, align }
     }
 
@@ -47,17 +43,29 @@ impl<'a> WrapVec<'a> {
 
     /// Gets the size of the collection in elements
     pub const fn len(&self) -> usize {
-        self.bytes.len / self.size
+        if self.size == 0 {
+            0
+        } else {
+            self.bytes.len / self.size
+        }
     }
 
     pub fn set_len(&mut self, len: usize) {
+        if self.size == 0 {
+            return;
+        }
+        assert!(len < isize::MAX as usize);
         assert!(len <= self.cap());
         self.bytes.len = len * self.size;
     }
 
     /// Gets the allocated capacity of the collection in elements
     pub const fn cap(&self) -> usize {
-        self.bytes.cap / self.size
+        if self.size == 0 {
+            0
+        } else {
+            self.bytes.cap / self.size
+        }
     }
 
     const fn ptr(&self) -> *const u8 {
@@ -74,8 +82,11 @@ impl<'a> WrapVec<'a> {
     ///
     /// Panics if `index >= len`
     pub fn get(&self, index: usize) -> *const u8 {
+        if self.size == 0 {
+            return self.ptr();
+        }
         assert!(index < self.len());
-        // TODO: To satisfy guarantee, make sure self.0.len < isize::MAX
+        // SAFETY: index < len && len < isize::MAX
         unsafe { self.ptr().add(index * self.size) }
     }
 
@@ -85,7 +96,11 @@ impl<'a> WrapVec<'a> {
     ///
     /// Panics if `index >= len`
     pub fn get_mut(&mut self, index: usize) -> *mut u8 {
+        if self.size == 0 {
+            return self.ptr_mut();
+        }
         assert!(index < self.len());
+        // SAFETY: index < len && len < isize::MAX
         unsafe { self.ptr_mut().add(index * self.size) }
     }
 
@@ -97,7 +112,7 @@ impl<'a> WrapVec<'a> {
     /// Allocate space for the given number of elements, doubling in size to
     /// avoid frequent reallocation
     pub fn maybe_grow_amortized(&mut self, new_cap: usize) {
-        if self.is_empty() {
+        if self.cap() == 0 {
             self.alloc(4);
         } else if new_cap > self.cap() {
             self.alloc(new_cap.max(self.cap() * 2));

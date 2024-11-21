@@ -53,7 +53,7 @@ where
 
         let index = bucket.len();
         bucket.maybe_grow_by(1);
-        bucket.set_len(bucket.len() + 1);
+        bucket.set_len(index + 1);
 
         let dst = bucket.get_mut(index);
         unsafe { element.write(dst) };

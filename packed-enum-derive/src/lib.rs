@@ -124,9 +124,10 @@ fn packable_inner(input: DeriveInput) -> Result<TokenStream2, PackedError> {
                     #ident::#variant_idents #arm_variables => {
                         let strukt = ::std::mem::ManuallyDrop::new(#construct_struct);
                         let strukt = <::std::mem::ManuallyDrop<#module::#variant_idents> as ::std::ops::Deref>::deref(&strukt);
-                        let src = ::std::ptr::from_ref(strukt).cast();
+                        let src = ::std::ptr::from_ref(strukt);
+                        let dst = dst.cast();
                         unsafe {
-                            ::std::ptr::copy_nonoverlapping(src, dst, bytes);
+                            ::std::ptr::copy(src, dst, bytes);
                         }
                     },
                     )*
