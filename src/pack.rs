@@ -1,4 +1,7 @@
-use crate::{byte_vec::ByteVec, Packable, Variant};
+use crate::{
+    byte_vec::{ByteVec, WrapVec},
+    Packable, Variant,
+};
 use std::marker::PhantomData;
 
 pub struct Pack<T>
@@ -43,55 +46,48 @@ where
 
     pub fn push(&mut self, element: T) {
         let variant = element.variant();
-        let variant_index = variant.as_index();
-        let size = variant.size_align().0;
-        let bucket = &mut self.buckets[variant_index];
+        let (size, align) = variant.size_align();
+
+        let bucket = &mut self.buckets[variant.as_index()];
+        let mut bucket = unsafe { WrapVec::new(bucket, size, align) };
+
         let index = bucket.len();
-        unsafe {
-            bucket.grow(size);
-        }
-        let dst = unsafe { bucket.get_mut(index, size) };
-        element.write(dst);
-        self.entries.push(Entry { variant, index })
+        bucket.maybe_grow_by(1);
+        bucket.set_len(bucket.len() + 1);
+
+        let dst = bucket.get_mut(index);
+        unsafe { element.write(dst) };
+
+        self.entries.push(Entry { variant, index });
     }
 
     pub fn pop(&mut self) -> Option<T> {
         self.entries.pop().map(|entry| {
             let Entry { variant, index } = entry;
-            let variant_index = variant.as_index();
-            let size = variant.size_align().0;
-            let bucket = &mut self.buckets[variant_index];
-            let src = unsafe { bucket.get(index, size) };
-            unsafe {
-                bucket.swap_remove(index, size);
-            }
-            T::read(variant, src)
+            let (size, align) = variant.size_align();
+
+            let bucket = &mut self.buckets[variant.as_index()];
+            let bucket = unsafe { WrapVec::new(bucket, size, align) };
+
+            let src = bucket.get(index);
+            unsafe { T::read(variant, src) }
         })
     }
 }
 
-impl<T> Default for Pack<T>
-where
-    T: Packable,
-{
+impl<T: Packable> Default for Pack<T> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<T> Drop for Pack<T>
-where
-    T: Packable,
-{
+impl<T: Packable> Drop for Pack<T> {
     fn drop(&mut self) {
         while self.pop().is_some() {}
     }
 }
 
-struct Entry<T>
-where
-    T: Packable,
-{
+struct Entry<T: Packable> {
     variant: T::Variant,
     index: usize,
 }

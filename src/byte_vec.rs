@@ -2,13 +2,8 @@ use core::panic;
 use std::{alloc::Layout, ptr::NonNull};
 
 pub struct ByteVec {
-    /// The allocation or a dangling pointer otherwise. Note that the dangling pointer may not be
-    /// aligned properly for the values being stored and should not be used a source for
-    /// references.
     ptr: NonNull<u8>,
-    /// The number of bytes currently stored
     len: usize,
-    /// The allocated capacity in bytes
     cap: usize,
 }
 
@@ -21,170 +16,162 @@ impl ByteVec {
             cap: 0,
         }
     }
+}
 
-    /// Gets the size of the collection contents in elements, not bytes.
+pub struct WrapVec<'a> {
+    bytes: &'a mut ByteVec,
+    size: usize,
+    align: usize,
+}
+
+impl<'a> WrapVec<'a> {
+    /// Creates a new wrapper over the given byte vector
+    ///
+    /// # Safety
+    ///
+    /// `SIZE` and `ALIGN` must match the values used when wrapping the same
+    /// byte vector previously. Multiple methods rely on this condition to
+    /// uphold safety guarantees.
+    pub unsafe fn new(bytes: &'a mut ByteVec, size: usize, align: usize) -> Self {
+        debug_assert!(bytes.len % size == 0);
+        debug_assert!(bytes.len % align == 0);
+        debug_assert!(bytes.cap % size == 0);
+        debug_assert!(bytes.cap % align == 0);
+        Self { bytes, size, align }
+    }
+
+    /// Whether the collection contains no elements
+    pub const fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    /// Gets the size of the collection in elements
     pub const fn len(&self) -> usize {
-        self.len
+        self.bytes.len / self.size
     }
 
-    /// Gets the allocated capacity of the collection in elements, not bytes.
-    #[allow(unused)]
-    pub const fn capacity(&self) -> usize {
-        self.cap
+    pub fn set_len(&mut self, len: usize) {
+        assert!(len <= self.cap());
+        self.bytes.len = len * self.size;
     }
 
-    /// Adds the element of sized `bytes` stored at `src` to the end of the collection.
+    /// Gets the allocated capacity of the collection in elements
+    pub const fn cap(&self) -> usize {
+        self.bytes.cap / self.size
+    }
+
+    const fn ptr(&self) -> *const u8 {
+        self.bytes.ptr.as_ptr().cast_const()
+    }
+
+    fn ptr_mut(&mut self) -> *mut u8 {
+        self.bytes.ptr.as_ptr()
+    }
+
+    /// Gets a pointer to the given `index` with elements of size `SIZE`
+    ///
+    /// # Panics
+    ///
+    /// Panics if `index >= len`
+    pub fn get(&self, index: usize) -> *const u8 {
+        assert!(index < self.len());
+        // TODO: To satisfy guarantee, make sure self.0.len < isize::MAX
+        unsafe { self.ptr().add(index * self.size) }
+    }
+
+    /// Gets a mutable pointer to the given byte index
+    ///
+    /// # Panics
+    ///
+    /// Panics if `index >= len`
+    pub fn get_mut(&mut self, index: usize) -> *mut u8 {
+        assert!(index < self.len());
+        unsafe { self.ptr_mut().add(index * self.size) }
+    }
+
+    /// Set the given index with the data behind the given pointer
+    ///
+    /// # Safety
+    ///
+    /// `data` must be a valid pointer with the same size and alignment
+    pub unsafe fn set(&mut self, index: usize, data: *const u8) {
+        data.copy_to(self.get_mut(index), self.size);
+    }
+
+    /// Guarantee space for `count` additional elements
+    pub fn maybe_grow_by(&mut self, count: usize) {
+        self.maybe_grow_amortized(self.len() + count);
+    }
+
+    /// Allocate space for the given number of elements, doubling in size to
+    /// avoid frequent reallocation
+    pub fn maybe_grow_amortized(&mut self, new_cap: usize) {
+        if self.is_empty() {
+            self.alloc(4);
+        } else if new_cap > self.cap() {
+            self.alloc(new_cap.max(self.cap() * 2));
+        }
+    }
+
+    /// Allocates space for the given number of elements
     ///
     /// # Panics
     ///
     /// Panics on allocation failure.
-    ///
-    /// # Safety
-    ///
-    /// `bytes` must be the same value used in previous calls.
-    #[allow(unused)]
-    pub unsafe fn push(&mut self, src: *const u8, bytes: usize) {
-        if self.len == self.cap {
-            let (ptr, layout) = if self.cap == 0 {
-                self.cap = 4;
+    pub fn alloc(&mut self, new_cap: usize) {
+        assert!(self.len() <= new_cap);
+        let bytes = new_cap * self.size;
 
-                // We assert in variant_size that type size exceeds alignment, so the size of the data
-                // is sufficient for alignment
-                let Ok(layout) = Layout::from_size_align(self.cap * bytes, bytes) else {
-                    panic!("Capacity overflow");
-                };
+        let Ok(layout) = Layout::from_size_align(bytes, self.align) else {
+            panic!("Capacity overflow");
+        };
 
-                let ptr = std::alloc::alloc(layout);
-                (ptr, layout)
-            } else {
-                // SAFETY: We created this layout for a previous allocation
-                let layout_prev = Layout::from_size_align_unchecked(self.cap * bytes, bytes);
-                self.cap *= 2;
-                let ptr = std::alloc::realloc(self.ptr.as_ptr(), layout_prev, self.cap * bytes);
-                (ptr, layout_prev)
-            };
-
-            if ptr.is_null() {
-                std::alloc::handle_alloc_error(layout);
-            }
-            self.ptr = NonNull::new_unchecked(ptr);
-        }
-
-        let dst = self.ptr.as_ptr().add(self.len * bytes);
-
-        // Check that the src pointer is not part of the collection so that copy_nonoverlapping is
-        // valid.
-        debug_assert!(
-            src < self.ptr.as_ptr() || src > unsafe { self.ptr.as_ptr().add(self.cap * bytes) }
-        );
-
-        std::ptr::copy_nonoverlapping(src, dst, bytes);
-        self.len += 1;
-    }
-
-    /// Increases the collection size and allocates space for additional elements if needed.
-    ///
-    /// # Panics
-    ///
-    /// Panics on allocation failure.
-    ///
-    /// # Safety
-    ///
-    /// `bytes` must be the same value used in previous calls.
-    pub unsafe fn grow(&mut self, bytes: usize) {
-        if self.len == self.cap {
-            let (ptr, layout) = if self.cap == 0 {
-                self.cap = 4;
-
-                // We assert in variant_size that type size exceeds alignment, so the size of the data
-                // is sufficient for alignment
-                let Ok(layout) = Layout::from_size_align(self.cap * bytes, bytes) else {
-                    panic!("Capacity overflow");
-                };
-
-                let ptr = std::alloc::alloc(layout);
-                (ptr, layout)
-            } else {
-                // SAFETY: We created this layout for a previous allocation
-                let layout_prev = Layout::from_size_align_unchecked(self.cap * bytes, bytes);
-                self.cap *= 2;
-                let ptr = std::alloc::realloc(self.ptr.as_ptr(), layout_prev, self.cap * bytes);
-                (ptr, layout_prev)
-            };
-
-            if ptr.is_null() {
-                std::alloc::handle_alloc_error(layout);
-            }
-            self.ptr = NonNull::new_unchecked(ptr);
-        }
-        self.len += 1;
-    }
-
-    /// Gets a pointer to the given `index` with elements of size `bytes`.
-    ///
-    /// # Panics
-    ///
-    /// Panics if `index >= len`
-    ///
-    /// # Safety
-    ///
-    /// `bytes` must be the same value used in previous calls.
-    pub unsafe fn get(&self, index: usize, bytes: usize) -> *const u8 {
-        assert!(index < self.len);
-        self.ptr.as_ptr().cast_const().add(index * bytes)
-    }
-
-    /// Gets a mutable pointer to the given `index` with elements of size `bytes`.
-    ///
-    /// # Panics
-    ///
-    /// Panics if `index >= len`
-    ///
-    /// # Safety
-    ///
-    /// `bytes` must be the same value used in previous calls.
-    pub unsafe fn get_mut(&mut self, index: usize, bytes: usize) -> *mut u8 {
-        assert!(index < self.len);
-        self.ptr.as_ptr().add(index * bytes)
-    }
-
-    /// Gets a mutable pointer to the given `index` with elements of size `bytes`.
-    ///
-    /// # Panics
-    ///
-    /// Panics if `index >= len`
-    ///
-    /// # Safety
-    ///
-    /// `bytes` must be the same value used in previous calls.
-    pub unsafe fn swap_remove(&mut self, index: usize, bytes: usize) {
-        assert!(index < self.len);
-        if index < self.len - 1 {
-            let src = self.ptr.as_ptr().add((self.len - 1) * bytes);
-            let dst = self.ptr.as_ptr().add(index * bytes);
-            std::ptr::copy_nonoverlapping(src, dst, bytes);
-        }
-        self.len -= 1;
-    }
-
-    /// Deallocates the allocated capacity, if any. This should be called in [`Drop`] by owners.
-    /// This type does not implement [`Drop`] directly as it does not know the size of elements it
-    /// holds.
-    ///
-    /// # Safety
-    ///
-    /// `bytes` must be the same value used in previous calls.
-    #[allow(unused)]
-    pub unsafe fn dealloc(&mut self, bytes: usize) {
-        if self.cap == 0 {
+        if layout.size() == 0 {
+            self.dealloc();
             return;
         }
 
-        // SAFETY: We already constructed this layout for a previous allocation
-        let layout = unsafe { Layout::from_size_align_unchecked(self.cap * bytes, bytes) };
-        unsafe { std::alloc::dealloc(self.ptr.as_ptr(), layout) };
-        self.len = 0;
-        self.cap = 0;
+        let ptr = if self.cap() == 0 {
+            // SAFETY: Layout has a nonzero size
+            unsafe { std::alloc::alloc(layout) }
+        } else {
+            let layout_prev = Layout::from_size_align(self.bytes.cap, self.align);
+            // SAFETY: We already used this layout for a previous allocation
+            let layout_prev = unsafe { layout_prev.unwrap_unchecked() };
+
+            // SAFETY:
+            // - ptr was previously allocated because cap > 0
+            // - layout_prev was used for the previous allocation
+            // - bytes > 0 (because layout was nonzero)
+            // - bytes < isize::MAX (because layout creation succeeded)
+            unsafe { std::alloc::realloc(self.ptr_mut(), layout_prev, bytes) }
+        };
+
+        match NonNull::new(ptr) {
+            Some(ptr) => self.bytes.ptr = ptr,
+            None => std::alloc::handle_alloc_error(layout),
+        }
+
+        self.bytes.cap = bytes;
+    }
+
+    /// Deallocates the allocated capacity, if any. This should be called in [`Drop`] by owners.
+    pub fn dealloc(&mut self) {
+        assert!(self.is_empty());
+        if self.cap() == 0 {
+            return;
+        }
+
+        let layout = Layout::from_size_align(self.bytes.cap, self.align);
+        // SAFETY: We already used this layout for a previous allocation
+        let layout = unsafe { layout.unwrap_unchecked() };
+
+        // SAFETY:
+        // - ptr is currently allocated (because cap > 0)
+        // - layout was used for the previous allocation
+        unsafe { std::alloc::dealloc(self.ptr_mut(), layout) };
+
+        self.bytes.cap = 0;
     }
 }
 
@@ -194,50 +181,37 @@ mod tests {
 
     #[test]
     fn byte_vec() {
-        const EL_SIZE: usize = std::mem::size_of::<i64>();
+        use std::ptr::from_ref;
+        const SIZE: usize = std::mem::size_of::<i64>();
+        const ALIGN: usize = std::mem::align_of::<i64>();
 
-        let mut vec = ByteVec::new();
-        assert_eq!(vec.len(), 0);
-        assert_eq!(vec.capacity(), 0);
+        let mut byte_vec = ByteVec::new();
+        let mut v = unsafe { WrapVec::new(&mut byte_vec, SIZE, ALIGN) };
 
-        let to_push = [i64::MIN, i64::MAX, 0, -10, 10];
-        for item in &to_push {
-            let ptr = std::ptr::from_ref(item).cast();
-            unsafe { vec.push(ptr, EL_SIZE) };
-        }
-        assert_eq!(vec.len(), 5);
-        assert_eq!(vec.capacity(), 8);
+        let items = [i64::MIN, i64::MAX, 0, -10, 10];
+        v.alloc(items.len());
+        assert_eq!(v.len(), 0);
+        assert_eq!(v.cap(), 5);
 
-        for (i, item) in to_push.iter().enumerate() {
-            let actual = unsafe { vec.get(i, EL_SIZE) };
-            let actual = unsafe { std::slice::from_raw_parts(actual, EL_SIZE) };
-            let expected =
-                unsafe { std::slice::from_raw_parts(std::ptr::from_ref(item).cast(), EL_SIZE) };
-            assert_eq!(actual, expected);
+        for (i, item) in items.iter().enumerate() {
+            v.set_len(i + 1);
+            unsafe {
+                v.set(i, from_ref(item).cast());
+            }
         }
 
-        let to_mut = unsafe { vec.get_mut(2, EL_SIZE) };
-        let to_write = std::ptr::from_ref(&1234i64).cast();
-        unsafe {
-            std::ptr::copy_nonoverlapping(to_write, to_mut, EL_SIZE);
+        assert_eq!(v.len(), 5);
+        assert_eq!(v.cap(), 5);
+
+        for (i, item) in items.iter().enumerate() {
+            let actual = v.get(i).cast::<i64>();
+            let actual = unsafe { actual.as_ref() }.unwrap();
+            assert_eq!(actual, item);
         }
 
-        unsafe {
-            vec.swap_remove(4, EL_SIZE);
-            vec.swap_remove(1, EL_SIZE);
-        }
-        assert_eq!(vec.len(), 3);
-        assert_eq!(vec.capacity(), 8);
-
-        let new_expected = [i64::MIN, -10, 1234];
-        for (i, item) in new_expected.iter().enumerate() {
-            let actual = unsafe { vec.get(i, EL_SIZE) };
-            let actual = unsafe { std::slice::from_raw_parts(actual, EL_SIZE) };
-            let expected =
-                unsafe { std::slice::from_raw_parts(std::ptr::from_ref(item).cast(), EL_SIZE) };
-            assert_eq!(actual, expected);
-        }
-
-        unsafe { vec.dealloc(EL_SIZE) };
+        v.set_len(0);
+        v.dealloc();
+        assert_eq!(v.len(), 0);
+        assert_eq!(v.cap(), 0);
     }
 }

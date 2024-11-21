@@ -15,10 +15,10 @@ pub trait Packable {
     type Mut<'a>;
 
     fn variant(&self) -> Self::Variant;
-    fn write(self, dst: *mut u8);
-    fn read(variant: Self::Variant, data: *const u8) -> Self;
-    fn read_ref<'a>(variant: Self::Variant, data: *const u8) -> Self::Ref<'a>;
-    fn read_mut<'a>(variant: Self::Variant, data: *mut u8) -> Self::Mut<'a>;
+    unsafe fn write(self, dst: *mut u8);
+    unsafe fn read(variant: Self::Variant, data: *const u8) -> Self;
+    unsafe fn read_ref<'a>(variant: Self::Variant, data: *const u8) -> Self::Ref<'a>;
+    unsafe fn read_mut<'a>(variant: Self::Variant, data: *mut u8) -> Self::Mut<'a>;
 }
 
 pub trait Variant {

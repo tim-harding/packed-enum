@@ -95,25 +95,25 @@ fn packable_inner(input: DeriveInput) -> Result<TokenStream2, PackedError> {
                 }
             }
 
-            fn read(variant: Self::Variant, data: *const u8) -> Self {
+            unsafe fn read(variant: Self::Variant, data: *const u8) -> Self {
                 match variant {
                     #( #module::Variant::#variant_idents => { #read_own } ),*
                 }
             }
 
-            fn read_ref<'a>(variant: Self::Variant, data: *const u8) -> Self::Ref<'a> {
+            unsafe fn read_ref<'a>(variant: Self::Variant, data: *const u8) -> Self::Ref<'a> {
                 match variant {
                     #( #module::Variant::#variant_idents => { #read_ref } ),*
                 }
             }
 
-            fn read_mut<'a>(variant: Self::Variant, data: *mut u8) -> Self::Mut<'a> {
+            unsafe fn read_mut<'a>(variant: Self::Variant, data: *mut u8) -> Self::Mut<'a> {
                 match variant {
                     #( #module::Variant::#variant_idents => { #read_mut } ),*
                 }
             }
 
-            fn write(self, dst: *mut u8) {
+            unsafe fn write(self, dst: *mut u8) {
                 let me = ::std::mem::ManuallyDrop::new(self);
                 let me = <::std::mem::ManuallyDrop<Self> as ::std::ops::Deref>::deref(&me);
                 let variant = <Self as ::packed_enum::Packable>::variant(me);
