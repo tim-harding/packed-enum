@@ -12,10 +12,7 @@ macro_rules! bucket {
     }};
 }
 
-pub struct Pack<T>
-where
-    T: Packable,
-{
+pub struct Pack<T: Packable> {
     // TODO: Memory compaction of entries
     entries: Vec<Entry<T>>,
     // TODO: Use array instead when generic_const_exprs is stable
@@ -23,10 +20,7 @@ where
     marker: PhantomData<T>,
 }
 
-impl<T> Pack<T>
-where
-    T: Packable,
-{
+impl<T: Packable> Pack<T> {
     /// Creates a new, empty collection.
     pub fn new() -> Self {
         let buckets: Vec<_> = std::iter::repeat_with(ByteVec::new)
