@@ -117,8 +117,7 @@ fn packable_inner(input: DeriveInput) -> Result<TokenStream2, PackedError> {
                 let me = ::std::mem::ManuallyDrop::new(self);
                 let me = <::std::mem::ManuallyDrop<Self> as ::std::ops::Deref>::deref(&me);
                 let variant = <Self as ::packed_enum::Packable>::variant(me);
-                let (size, align) = ::packed_enum::Variant::size_align(&variant);
-                let bytes = size.max(align);
+                let (size, _) = ::packed_enum::Variant::size_align(&variant);
                 match me {
                     #(
                     #ident::#variant_idents #arm_variables => {
@@ -127,7 +126,7 @@ fn packable_inner(input: DeriveInput) -> Result<TokenStream2, PackedError> {
                         let src = ::std::ptr::from_ref(strukt);
                         let dst = dst.cast();
                         unsafe {
-                            ::std::ptr::copy(src, dst, bytes);
+                            ::std::ptr::copy(src, dst, 1);
                         }
                     },
                     )*
